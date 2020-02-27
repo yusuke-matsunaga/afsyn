@@ -20,6 +20,7 @@ class Node :
     def __init__(self, id, fanin_list) :
         self.__id = id
         self.__fanin_list = fanin_list
+        self.__cstep = -1
 
     ### @brief ID番号を返す．
     @property
@@ -45,6 +46,16 @@ class Node :
     @property
     def is_op2(self) :
         return False
+
+    ### @brief スケジューリングを行う．
+    ### @param[in] cstep このノードの cstep
+    def set_schedule(self, cstep) :
+        self.__cstep = cstep
+
+    ### @brief cstep を返す．
+    @property
+    def cstep(self) :
+        return self.__cstep
 
 
 ### @brief メモリノード

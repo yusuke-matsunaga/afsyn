@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 ### @file scheduling.py
-### @brief
+### @brief スケジューリングを行うプログラム
 ### @author Yusuke Matsunaga (松永 裕介)
 ###
 ### Copyright (C) 2020 Yusuke Matsunaga

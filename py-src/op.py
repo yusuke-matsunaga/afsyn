@@ -1,10 +1,10 @@
 #! /usr/bin/env python3
 
 ### @file op.py
-### @brief
+### @brief Op クラスの定義を行う
 ### @author Yusuke Matsunaga (松永 裕介)
 ###
-### Copyright (C) 2019 Yusuke Matsunaga
+### Copyright (C) 2019, 2020 Yusuke Matsunaga
 ### All rights reserved.
 
 
@@ -20,52 +20,31 @@ class Op :
     def __init__(self, id) :
         self.__id = id
         self.__fanin_list = []
-        self.__double_num = 0
-        self.__negative = False
 
     ### @brief 番号を返す．
     @property
     def id(self) :
         return self.__id
 
-    ### @brief ファンイン番号のリストを返す．
+    ### @brief ファンイン番号と重みのリストを返す．
     @property
     def fanin_list(self) :
         return self.__fanin_list
-
-    ### @brief 必要なブロック数を計算する．
-    @property
-    def block_size(self) :
-        size = len(self.__fanin_list)
-        size += self.__double_num
-        if self.__negative :
-            size += 1
-        return size // 16
 
     ### @brief ファンインを追加する．
     ### @param[in] i_id ファンイン番号
     ### @param[in] w 重み
     def add_fanin(self, i_id, w) :
-        if w == 0.125 :
-            i_type = 0
-        elif w == 0.25 :
-            i_type = 1
-            self.__double_num += 1
-        elif w == -0.125 :
-            i_type = 2
-            self.__negative = True
-        else :
-            assert False
         self.__fanin_list.append( (i_id, w) )
 
     ### @brief 内容をダンプする．
     def dump(self, fout) :
-        print('{}:'.format(self.__id), file = fout, end = '')
+        fout.write('{}:'.format(self.__id))
         comma = ''
         for i_id, w in self.__fanin_list :
-            print('{} ({}, {})'.format(comma, i_id, w), file = fout, end = '')
+            fout.write('{} ({}, {})'.format(comma, i_id, w))
             comma = ','
-        print('', file = fout)
+        fwout.write('\n')
 
 
 ### @brief dump したファイルを読み込む．
