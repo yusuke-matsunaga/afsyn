@@ -8,10 +8,9 @@
 ### All rights reserved.
 
 import random
-from schedule import Schedule
 
 
-def mem_scheduling(node, step, mem_usage, schedule) :
+def mem_scheduling(node, step, mem_usage) :
     mem_undo_list = []
     schedule_undo_list = []
     for inode in node.fanin_list :
@@ -33,11 +32,11 @@ def mem_scheduling(node, step, mem_usage, schedule) :
         else :
             for block_id, step in mem_undo_list :
                 del mem_usage[(block_id, step)]
-            for node_id in schedule_undo_list :
-                schedule.clear(node_id)
+            for node in schedule_undo_list :
+                node.set_schedule(-1)
             return False
-        schedule.set(inode.id, istep)
-        schedule_undo_list.append(inode.id)
+        inode.set_schedule(istep)
+        schedule_undo_list.append(inode)
     return True
 
 
@@ -45,7 +44,6 @@ def list_scheduling(dfg, node_list, op_limit) :
     mem_usage = dict()
     op1_usage = dict()
     op2_usage = dict()
-    schedule = Schedule()
     next_step = 0
     for node in node_list :
         if node.is_mem :
@@ -66,11 +64,11 @@ def list_scheduling(dfg, node_list, op_limit) :
                 step = next_step
                 next_step += 1
                 mem_usage[(block_id, step)] = bank_id
-            schedule.set(node.id, step)
+            node.set_schedule(step)
         elif node.is_op1 :
             max_step = 0
             for inode in node.fanin_list :
-                step = schedule.get(inode.id)
+                step = inode.cstep
                 if max_step < step :
                     max_step = step
             for step in range(max_step + 1, next_step) :
@@ -88,11 +86,11 @@ def list_scheduling(dfg, node_list, op_limit) :
                 step = next_step
                 next_step += 1
                 op1_usage[step] = 1
-            schedule.set(node.id, step)
+            node.set_schedule(step)
         elif node.is_op2 :
             max_step = 0
             for inode in node.fanin_list :
-                step = schedule.get(inode.id)
+                step = inode.cstep
                 if max_step < step :
                     max_step = step
             step = max_step + 1
@@ -100,18 +98,15 @@ def list_scheduling(dfg, node_list, op_limit) :
                 op2_usage[step] += 1
             else :
                 op2_usage[step] = 1
-            schedule.set(node.id, step)
+            node.set_schedule(step)
             if next_step < step + 1:
                 next_step = step + 1
-
-    return schedule
 
 
 def list_scheduling2(dfg, node_list, op_limit) :
     mem_usage = dict()
     op1_usage = dict()
     op2_usage = dict()
-    schedule = Schedule()
     next_step = 0
     for node in node_list :
         if node.is_mem :
@@ -124,25 +119,25 @@ def list_scheduling2(dfg, node_list, op_limit) :
                     if num >= op_limit :
                         pass
                     else :
-                        if mem_scheduling(node, step, mem_usage, schedule) :
+                        if mem_scheduling(node, step, mem_usage) :
                             op1_usage[step] += 1
                             break
                 else :
-                    if mem_scheduling(node, step, mem_usage, schedule) :
+                    if mem_scheduling(node, step, mem_usage) :
                         op1_usage[step] = 1
                         break
             else :
                 while True :
                     step = next_step
                     next_step += 1
-                    if mem_scheduling(node, step, mem_usage, schedule) :
+                    if mem_scheduling(node, step, mem_usage) :
                         op1_usage[step] = 1
                         break
-            schedule.set(node.id, step)
+            node.set_schedule(step)
         elif node.is_op2 :
             max_step = 0
             for inode in node.fanin_list :
-                step = schedule.get(inode.id)
+                step = inode.cstep
                 if max_step < step :
                     max_step = step
             step = max_step + 1
@@ -150,23 +145,25 @@ def list_scheduling2(dfg, node_list, op_limit) :
                 op2_usage[step] += 1
             else :
                 op2_usage[step] = 1
-            schedule.set(node.id, step)
+            node.set_schedule(step)
             if next_step < step + 1:
                 next_step = step + 1
 
 
-    return schedule
-
-
 ### @brief スケジューリング結果を評価する．
 ### @return op1, op2, レジスタ数を返す．
-def eval_schedule(dfg, schedule) :
-    total_step = schedule.total_step
+def eval_schedule(dfg) :
+    total_step = 0
+    for node in dfg.node_list :
+        cstep = node.cstep
+        if total_step < cstep :
+            total_step = cstep
+    total_step += 1
     # op1, op2 のリソース量の計算
     op1_num_list = [ 0 for i in range(total_step) ]
     op2_num_list = [ 0 for i in range(total_step) ]
     for node in dfg.node_list :
-        step = schedule.get(node.id)
+        step = node.cstep
         if node.is_op1 :
             op1_num_list[step] += 1
         elif node.is_op2 :
@@ -182,9 +179,9 @@ def eval_schedule(dfg, schedule) :
     # レジスタのリソース量の計算
     reg_map_list = [ set() for i in range(total_step) ]
     for node in dfg.node_list :
-        ostep = schedule.get(node.id)
+        ostep = node.cstep
         for inode in node.fanin_list :
-            istep = schedule.get(inode.id)
+            istep = inode.cstep
             if inode.is_mem :
                 for step in range(istep + 1, ostep) :
                     reg_map_list[step].add( (inode.block_id, inode.bank_id, inode.offset) )
@@ -197,20 +194,28 @@ def eval_schedule(dfg, schedule) :
         if reg_num < n :
             reg_num = n
 
-    return op1_num, op2_num, reg_num
+    return op1_num, op2_num, reg_num, total_step
 
 
+### @brief スケジューリングを行う．
+### @param[in] op_list 演算リスト
+### @param[in] op_limit OP1タイプの演算器の個数
+### @param[in] mem_layout メモリレイアウト
+### @param[in] method メソッド名
+### @return スケジューリング後の DFG を返す．
+def scheduling(op_list, op_limit, mem_layout, s_method) :
+    # 演算の分割を行い DFG を作る．
+    dfg = make_graph(op_list, mem_layout)
 
-def scheduling(dfg, op_limit, method) :
-    if method == 1 :
-        schedule = list_scheduling(dfg, dfg.node_list, op_limit)
-    elif method == 2 :
-        schedule = list_scheduling2(dfg, dfg.node_list, op_limit)
+    # スケジューリングを行う．
+    if s_method == 1 :
+        list_scheduling(dfg, dfg.node_list, op_limit)
+    elif s_method == 2 :
+        list_scheduling2(dfg, dfg.node_list, op_limit)
     else :
         print('error in scheduling: method should be 1 or 2.')
         exit(1)
-    op1_num, op2_num, reg_num = eval_schedule(dfg, schedule)
-    print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, schedule.total_step))
+    return dfg
 
 
 if __name__ == '__main__' :
@@ -244,14 +249,12 @@ if __name__ == '__main__' :
         print()
         print('Block Num: {}'.format(block_num))
         print('Bank Size: {}'.format(bank_size))
-        for method in (1, 2) :
-            mem_layout = MemLayout(mem_size, block_num, bank_size, method)
-            dfg = make_graph(op_list, mem_layout)
-
-            #print('# of nodes: {}'.format(len(dfg.node_list)))
-            #print('# of outputs: {}'.format(len(dfg.output_list)))
+        for m_method in (1, 2) :
+            mem_layout = MemLayout(mem_size, block_num, bank_size, m_method)
             print()
-            print('Memory model #{}'.format(method))
+            print('Memory model #{}'.format(m_method))
             for op_limit in (16, 32, 64, 128) :
                 for s_method in (1, 2) :
-                    scheduling(dfg, op_limit, s_method)
+                    dfg = scheduling(op_list, op_limit, mem_layout, s_method)
+                    op1_num, op2_num, reg_num, total_step = eval_schedule(dfg)
+                    print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
