@@ -21,6 +21,7 @@ class Node :
         self.__id = id
         self.__fanin_list = fanin_list
         self.__cstep = -1
+        self.__rid = -1
 
     ### @brief ID番号を返す．
     @property

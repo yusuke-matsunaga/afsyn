@@ -84,11 +84,10 @@ class Var :
             return False
 
 
-def bind(dfg, schedule) :
-    op1_num, op2_num, reg_num = eval_schedule(dfg, schedule)
+def bind(dfg) :
+    op1_num, op2_num, reg_num, total_step = eval_schedule(dfg)
 
     # 演算器はとりあえずナイーブに割り当てる．
-    total_step = schedule.total_step
     op1_map = dict()
     op2_map = dict()
 
