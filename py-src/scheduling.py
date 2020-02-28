@@ -8,6 +8,7 @@
 ### All rights reserved.
 
 import random
+from dfg import make_graph
 
 
 def mem_scheduling(node, step, mem_usage) :
@@ -222,7 +223,6 @@ if __name__ == '__main__' :
     import sys
     import os
     from op import Op, read_op
-    from dfg import make_graph
     from mem_layout import MemLayout
 
     if len(sys.argv) != 2 :
@@ -256,5 +256,5 @@ if __name__ == '__main__' :
             for op_limit in (16, 32, 64, 128) :
                 for s_method in (1, 2) :
                     dfg = scheduling(op_list, op_limit, mem_layout, s_method)
-                    op1_num, op2_num, reg_num, total_step = eval_schedule(dfg)
+                    op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
                     print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
