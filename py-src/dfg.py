@@ -356,6 +356,13 @@ class DFG :
                 var = memvar_map[key]
                 var.add_tgt_id(node.id, node.cstep)
 
+        # OP1ノードは一対一
+        for node in self.op1node_list :
+            step = node.cstep
+            var = Var(node.id, step)
+            self.__var_list.append(var)
+            node.attach_var(var)
+
         # レジスタのリソース量の計算
         reg_map_list = [ set() for i in range(self.total_step) ]
         for node in self.node_list :

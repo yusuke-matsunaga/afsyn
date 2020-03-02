@@ -24,10 +24,10 @@ class MemLayout :
         self.__method = method
         if self.__method == 2 :
             self.__slice_size = self.__bank_size * self.__block_num
-        print('memory_size = {}'.format(self.__memory_size))
-        print('block_num   = {}'.format(self.__block_num))
-        print('block_size  = {}'.format(self.__block_size))
-        print('bank_size   = {}'.format(self.__bank_size))
+        #print('memory_size = {}'.format(self.__memory_size))
+        #print('block_num   = {}'.format(self.__block_num))
+        #print('block_size  = {}'.format(self.__block_size))
+        #print('bank_size   = {}'.format(self.__bank_size))
 
     ### @brief ブロック番号を返す．
     ### @param[in] i_id アドレス

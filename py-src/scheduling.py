@@ -272,6 +272,7 @@ def scheduling(op_list, op_limit, mem_layout, s_method) :
     else :
         print('error in scheduling: method should be 1 or 2 or 3.')
         exit(1)
+    dfg.eval_resource()
     return dfg
 
 

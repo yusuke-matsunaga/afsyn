@@ -10,6 +10,8 @@
 
 from scheduling import scheduling
 
+debug = False
+
 def left_edge(dfg) :
     var_list = dfg.var_list
     # start, end でソートする．
@@ -96,16 +98,17 @@ def alloc_selecter(dfg, reg_num) :
             for src in src_dict.values() :
                 src_set.add(src)
             n += len(src_set)
-        print('OP1#{}: # of inputs: {}'.format(op_id, n))
-        for i, src_dict in enumerate(sel_src_list) :
-            src_set = set()
-            for src in src_dict.values() :
-                src_set.add(src)
-            print('INPUT#{}'.format(i), end = '')
-            for src in src_set :
-                print(' {}'.format(src), end = '')
-            print()
         total_num += n
+        if debug :
+            print('OP1#{}: # of inputs: {}'.format(op_id, n))
+            for i, src_dict in enumerate(sel_src_list) :
+                src_set = set()
+                for src in src_dict.values() :
+                    src_set.add(src)
+                print('INPUT#{}'.format(i), end = '')
+                for src in src_set :
+                    print(' {}'.format(src), end = '')
+                print()
 
     # OP2 のファンインのセレクタ生成
     src_list_map_dict = dict()
@@ -131,16 +134,17 @@ def alloc_selecter(dfg, reg_num) :
             for src in src_dict.values() :
                 src_set.add(src)
             n += len(src_set)
-        print('OP2#{}: # of inputs: {}'.format(op_id, n))
-        for i, src_dict in enumerate(sel_src_list) :
-            src_set = set()
-            for src in src_dict.values() :
-                src_set.add(src)
-            print('INPUT#{}'.format(i), end = '')
-            for src in src_set :
-                print(' {}'.format(src), end = '')
-            print()
         total_num += n
+        if debug :
+            print('OP2#{}: # of inputs: {}'.format(op_id, n))
+            for i, src_dict in enumerate(sel_src_list) :
+                src_set = set()
+                for src in src_dict.values() :
+                    src_set.add(src)
+                print('INPUT#{}'.format(i), end = '')
+                for src in src_set :
+                    print(' {}'.format(src), end = '')
+                print()
 
     var_set = set()
     for node in dfg.memnode_list :
@@ -158,11 +162,9 @@ def alloc_selecter(dfg, reg_num) :
 
 
 def bind(dfg) :
-    op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
-
     # 演算器はとりあえずナイーブに割り当てる．
     op1_map = dict()
-    op1_count = [ 0 for i in range(total_step) ]
+    op1_count = [ 0 for i in range(dfg.total_step) ]
     for node in dfg.op1node_list :
         step = node.cstep
         op_id = op1_count[step]
@@ -170,7 +172,7 @@ def bind(dfg) :
         op1_count[step] += 1
 
     op2_map = dict()
-    op2_count = [ 0 for i in range(total_step) ]
+    op2_count = [ 0 for i in range(dfg.total_step) ]
     for node in dfg.op2node_list :
         step = node.cstep
         op_id = op2_count[step]
@@ -215,12 +217,13 @@ if __name__ == '__main__' :
     mem_conf = ((24, 32), )
     op1_conf = (16, 32, 64, 128)
     op1_conf = (128, )
+    m_conf = (1, 2)
     s_conf = (1, 2, 3)
     for block_num, bank_size in mem_conf :
         print()
         print('Block Num: {}'.format(block_num))
         print('Bank Size: {}'.format(bank_size))
-        for m_method in (1,) :
+        for m_method in m_conf :
             mem_layout = MemLayout(mem_size, block_num, bank_size, m_method)
             print()
             print('Memory model #{}'.format(m_method))
