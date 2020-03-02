@@ -211,16 +211,21 @@ if __name__ == '__main__' :
                 mem_size = i_id
     mem_size += 1
 
-    for block_num, bank_size in ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32)) :
+    mem_conf = ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32))
+    mem_conf = ((24, 32), )
+    op1_conf = (16, 32, 64, 128)
+    op1_conf = (128, )
+    s_conf = (1, 2, 3)
+    for block_num, bank_size in mem_conf :
         print()
         print('Block Num: {}'.format(block_num))
         print('Bank Size: {}'.format(bank_size))
-        for m_method in (1, 2) :
+        for m_method in (1,) :
             mem_layout = MemLayout(mem_size, block_num, bank_size, m_method)
             print()
             print('Memory model #{}'.format(m_method))
-            for op_limit in (16, 32, 64, 128) :
-                for s_method in (3,) :
+            for op_limit in op1_conf :
+                for s_method in s_conf :
                     dfg = scheduling(op_list, op_limit, mem_layout, s_method)
                     op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
                     print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
