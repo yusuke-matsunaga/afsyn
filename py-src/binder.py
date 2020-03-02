@@ -30,22 +30,49 @@ def left_edge(dfg) :
 
     return reg_id
 
-def bipartite_matchin(left_group_list, right_list) :
+
+### @brief セレクタの入力のバインディングを行う．
+### @param[in] src_list_map cstep をキーにしてセレクタの入力のリストを入れる辞書
+### @param[in] max_fanin セレクタの入力数
+def input_binding(src_list_map, max_fanin) :
+    # 各入力の担当するレジスタ番号のセット
+    sel_src_set = [ set() for i in range(max_fanin) ]
+    # cstep をキーにして個々のセレクタのソースを入れた辞書
+    sel_src_list = [ dict() for i in range(max_fanin) ]
+    last_i = -1
+    for cstep, src_list in src_list_map.items() :
+        used = set()
+        for src in src_list :
+            # すでに同じレジスタを持つ入力があったらそこに割り当てる．
+            for i in range(max_fanin) :
+                if src in sel_src_set[i] :
+                    sel_src_list[i][cstep] = src
+                    used.add(i)
+                    if last_i < i :
+                        last_i = i
+                    break
+            else :
+                # 未使用の入力に割り当てる．
+                for i in range(max_fanin) :
+                    if i not in used :
+                        sel_src_list[i][cstep] = src
+                        used.add(i)
+                        if last_i < i :
+                            last_i = i
+                        break
+
+    return sel_src_list[:last_i + 1]
 
 
-def input_binding(src_list_list, max_fanin) :
-    sel_src_list = [ [] for i in range(max_fanin) ]
-    for src_list in src_list_list :
-        sel_src_list = bipartite_matching(sel_src_list, src_list)
-    return sel_src_list
-
-
+### @brief セレクタを生成する．
+### @param[in] dfg 対象のDFG
+### @param[in] reg_num レジスタ数
 def alloc_selecter(dfg, reg_num) :
     reg_src_map = dict()
     total_num = 0
 
     # OP1 のファンインのセレクタ生成
-    src_list_map = dict()
+    src_list_map_dict = dict()
     for node in dfg.op1node_list :
         src_list = list()
         for inode in node.fanin_list :
@@ -53,55 +80,66 @@ def alloc_selecter(dfg, reg_num) :
             reg_id = var.reg_id
             src_list.append(reg_id)
         op_id = node.op_id
-        if op_id not in src_list_map :
-            src_list_map[op_id] = list()
-        src_list_map[op_id].append(src_list)
-        var = node.var
-        reg_id = var.reg_id
-        if reg_id not in reg_src_map :
-            reg_src_map[reg_id] = list()
-        reg_src_map[reg_id].append(op_id)
+        if op_id not in src_list_map_dict :
+            src_list_map_dict[op_id] = dict()
+        src_list_map_dict[op_id][node.cstep] = src_list
 
     for op_id in range(dfg.op1_num) :
-        assert op_id in src_list_map
-        # ファンインのレジスタ番号のリストのリスト
-        src_list_list = src_list_map[op_id]
+        assert op_id in src_list_map_dict
+        # cstep をキーにしたファンインのレジスタ番号のリストの辞書
+        src_list_map = src_list_map_dict[op_id]
         # 入力のバインディングを行う．
-        sel_src_list = input_binding(src_list_list, 16)
+        sel_src_list = input_binding(src_list_map, 16)
         n = 0
-        for src_list in sel_src_list :
-            n += len(src_list)
-        print('# of inputs: {}'.format(n))
+        for src_dict in sel_src_list :
+            src_set = set()
+            for src in src_dict.values() :
+                src_set.add(src)
+            n += len(src_set)
+        print('OP1#{}: # of inputs: {}'.format(op_id, n))
+        for i, src_dict in enumerate(sel_src_list) :
+            src_set = set()
+            for src in src_dict.values() :
+                src_set.add(src)
+            print('INPUT#{}'.format(i), end = '')
+            for src in src_set :
+                print(' {}'.format(src), end = '')
+            print()
         total_num += n
 
     # OP2 のファンインのセレクタ生成
-    src_list_map = dict()
+    src_list_map_dict = dict()
     for node in dfg.op2node_list :
         src_list = list()
         for inode in node.fanin_list :
-            var = inode.var
-            reg_id = var.reg_id
-            src_list.append(reg_id)
+            op1_id = inode.op_id
+            src_list.append(op1_id)
         op_id = node.op_id
-        if op_id not in src_list_map :
-            src_list_map[op_id] = list()
-        src_list_map[op_id].append(src_list)
-        var = node.var
-        reg_id = var.reg_id
-        if reg_id not in reg_src_map :
-            reg_src_map[reg_id] = list()
-        reg_src_map[reg_id].append(op_id)
+        if op_id not in src_list_map_dict :
+            src_list_map_dict[op_id] = dict()
+        src_list_map_dict[op_id][node.cstep] = src_list
 
     for op_id in range(dfg.op2_num) :
-        assert op_id in src_list_map
-        # ファンインのレジスタ番号のリストのリスト
-        src_list_list = src_list_map[op_id]
+        assert op_id in src_list_map_dict
+        # ファンインのOP1番号のリストのリスト
+        src_list_map = src_list_map_dict[op_id]
         # 入力のバインディングを行う．
-        sel_src_list = input_binding(src_list_list, 15)
+        sel_src_list = input_binding(src_list_map, 15)
         n = 0
-        for src_list in sel_src_list :
-            n += len(src_list)
-        print('# of inputs: {}'.format(n))
+        for src_dict in sel_src_list :
+            src_set = set()
+            for src in src_dict.values() :
+                src_set.add(src)
+            n += len(src_set)
+        print('OP2#{}: # of inputs: {}'.format(op_id, n))
+        for i, src_dict in enumerate(sel_src_list) :
+            src_set = set()
+            for src in src_dict.values() :
+                src_set.add(src)
+            print('INPUT#{}'.format(i), end = '')
+            for src in src_set :
+                print(' {}'.format(src), end = '')
+            print()
         total_num += n
 
     var_set = set()
@@ -115,13 +153,6 @@ def alloc_selecter(dfg, reg_num) :
         if reg_id not in reg_src_map :
             reg_src_map[reg_id] = list()
         reg_src_map[reg_id].append(node)
-
-    # レジスタの入力のセレクタ生成
-    for reg_id in range(reg_num) :
-        assert reg_id in reg_src_map
-        src_list = reg_src_map[reg_id]
-        # src_list の要素数がセレクタの入力数となる．
-        total_num += len(src_list)
 
     print('Total inputs: {}'.format(total_num))
 
@@ -146,7 +177,7 @@ def bind(dfg) :
         node.bind(op_id)
         op2_count[step] += 1
 
-    # 単純なレフトエッジ法で割り当てる．
+    # レジスタは単純なレフトエッジ法で割り当てる．
     reg_num = left_edge(dfg)
 
     # セレクタの生成を行う．
@@ -189,7 +220,7 @@ if __name__ == '__main__' :
             print()
             print('Memory model #{}'.format(m_method))
             for op_limit in (16, 32, 64, 128) :
-                for s_method in (1, 2) :
+                for s_method in (3,) :
                     dfg = scheduling(op_list, op_limit, mem_layout, s_method)
                     op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
                     print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))

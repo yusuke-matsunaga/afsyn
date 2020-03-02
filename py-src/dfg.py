@@ -335,10 +335,8 @@ class DFG :
                 self.__op2_num = op2_num_list[step]
 
         # 変数を作る．
-        # OP1 ノードに対しては一対一対応だが
         # MEM ノードに対しては複数のノードが一つの変数に対応する．
         memvar_map = dict()
-        op1var_map = dict()
         for node in self.memnode_list :
             step = node.cstep
             # 同じブロック，同じオフセット，同じcstepなら共有する．
@@ -353,25 +351,10 @@ class DFG :
             node.attach_var(var)
 
         for node in self.op1node_list :
-            step1 = node.cstep
-            var = Var(node.id, step1)
-            node.attach_var(var)
-            op1var_map[node.id] = var
-            self.__var_list.append(var)
             for inode in node.fanin_list :
-                assert inode.is_mem
-                step2 = inode.cstep
-                key = (inode.block_id, inode.offset, step2)
-                ivar = memvar_map[key]
-                ivar.add_tgt_id(node.id, step1)
-
-        for node in self.op2node_list :
-            step1 = node.cstep
-            for inode in node.fanin_list :
-                assert inode.is_op1
-                step2 = inode.cstep
-                ivar = op1var_map[inode.id]
-                ivar.add_tgt_id(node.id, step1)
+                key = (inode.block_id, inode.offset, inode.cstep)
+                var = memvar_map[key]
+                var.add_tgt_id(node.id, node.cstep)
 
         # レジスタのリソース量の計算
         reg_map_list = [ set() for i in range(self.total_step) ]
@@ -382,9 +365,6 @@ class DFG :
                 if inode.is_mem :
                     for step in range(istep + 1, ostep) :
                         reg_map_list[step].add( (inode.block_id, inode.bank_id, inode.offset) )
-                else :
-                    for step in range(istep, ostep - 1) :
-                        reg_map_list[step].add(inode.id)
         reg_num = 0
         for step in range(self.total_step) :
             n = len(reg_map_list[step])

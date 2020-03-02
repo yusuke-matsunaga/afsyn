@@ -151,6 +151,60 @@ def list_scheduling2(dfg, node_list, op_limit) :
                 next_step = step + 1
 
 
+def group_scheduling(op2node_list, base_step) :
+    total_num = 0
+    for node in op2node_list :
+        for op1node in node.fanin_list :
+            total_num += len(op1node.fanin_list)
+
+    mem_usage = dict()
+    for node in op2node_list :
+        last_step = 0
+        for op1node in node.fanin_list :
+            for memnode in op1node.fanin_list :
+                # memnode のスケジュールを決める．
+                block_id = memnode.block_id
+                bank_id = memnode.bank_id
+                for step in range(base_step, base_step + total_num) :
+                    if (block_id, step) in mem_usage :
+                        if mem_usage[(block_id, step)] != bank_id :
+                            # 他のバンクが使っている．
+                            pass
+                        else :
+                            # OK
+                            break
+                    else :
+                        mem_usage[(block_id, step)] = bank_id
+                        break
+                memnode.set_schedule(step)
+                if last_step < step :
+                    last_step = step
+        for op1node in node.fanin_list :
+            op1node.set_schedule(last_step + 1)
+        node.set_schedule(last_step + 2)
+
+    return last_step + 3
+
+
+def list_scheduling3(dfg, op_limit) :
+    base_step = 0
+    op2node_list = list()
+    op1_num = 0
+    for op2node in dfg.op2node_list :
+        n = len(op2node.fanin_list)
+        if op1_num + n <= op_limit :
+            op2node_list.append(op2node)
+            op1_num += n
+            continue
+        # 今の op2node_list でひとかたまりにする．
+        base_step = group_scheduling(op2node_list, base_step)
+        op2node_list.clear()
+        op1_num = 0
+        op2node_list.append(op2node)
+    assert len(op2node_list) > 0
+    group_scheduling(op2node_list, base_step)
+
+
 ### @brief スケジューリング結果を評価する．
 ### @return op1, op2, レジスタ数を返す．
 def eval_schedule(dfg) :
@@ -213,8 +267,10 @@ def scheduling(op_list, op_limit, mem_layout, s_method) :
         list_scheduling(dfg, dfg.node_list, op_limit)
     elif s_method == 2 :
         list_scheduling2(dfg, dfg.node_list, op_limit)
+    elif s_method == 3 :
+        list_scheduling3(dfg, op_limit)
     else :
-        print('error in scheduling: method should be 1 or 2.')
+        print('error in scheduling: method should be 1 or 2 or 3.')
         exit(1)
     return dfg
 
@@ -254,7 +310,7 @@ if __name__ == '__main__' :
             print()
             print('Memory model #{}'.format(m_method))
             for op_limit in (16, 32, 64, 128) :
-                for s_method in (1, 2) :
+                for s_method in (3,) :
                     dfg = scheduling(op_list, op_limit, mem_layout, s_method)
                     op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
                     print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))

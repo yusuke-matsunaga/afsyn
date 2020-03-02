@@ -26,7 +26,7 @@ def find_path(cur_path, l_nodes, r_nodes) :
 ### @param[in] n_l 左の節点数
 ### @param[in] n_r 右の節点数
 ### @param[in] edge_list 枝のリスト
-### @return 選ばれた枝のリストを返す．n
+### @return 選ばれた枝のリストを返す．
 ###
 ### 枝は (l, r, w) のタプルで表される．
 ### l は左の節点番号 ( 0 <= l < n_l )
@@ -34,16 +34,16 @@ def find_path(cur_path, l_nodes, r_nodes) :
 ### w は重み
 def bipartite_matching(n_l, n_r, edge_list) :
     if len(edge_list) == 0 :
-        return []
+        return list()
     assert n_l > 0
     assert n_r > 0
-    left_nodes = [ [] for i in range(n_l) ]
-    right_nodes = [ [] for i in range(n_r) ]
+    left_nodes = [ list() for i in range(n_l) ]
+    right_nodes = [ list() for i in range(n_r) ]
     for l, r, w in edge_list :
         l_node = l_nodes[l]
         r_node = r_nodes[r]
-        l_node.append( (r_node, w) )
-        r_node.append( (l_node, w) )
+        l_node.append( (r, w) )
+        r_node.append( (l, w) )
 
     # 初期マッチングを求める．
     path1 = list()
