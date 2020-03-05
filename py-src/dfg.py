@@ -142,6 +142,19 @@ class OpNode(Node) :
     def weight_list(self) :
         return self.__weight_list
 
+    ### @brief 負の重みを持つ入力数
+    @property
+    def bias(self) :
+        ans = 0
+        if self.is_op1 :
+            for w in self.__weight_list :
+                if w < 0 :
+                    ans += 1
+        else :
+            for inode in self.fanin_list :
+                ans += inode.bias
+        return ans
+
     ### @brief 演算器に割り当てる．
     ### @param[in] op_id 演算器ID
     def bind(self, op_id) :
@@ -173,6 +186,7 @@ class Var :
         self.__tgt_id_list.append(tgt_id)
         if self.__end < end :
             self.__end = end
+        assert self.__start < self.__end
 
     ### @brief ソースIDを返す．
     @property
@@ -363,6 +377,13 @@ class DFG :
             self.__var_list.append(var)
             node.attach_var(var)
 
+        for node in self.op2node_list :
+            tgt_id = node.id
+            step = node.cstep
+            for inode in node.fanin_list :
+                var = inode.var
+                var.add_tgt_id(tgt_id, step)
+
         # レジスタのリソース量の計算
         reg_map_list = [ set() for i in range(self.total_step) ]
         for node in self.node_list :
@@ -396,19 +417,24 @@ def make_graph(op_list, mem_layout) :
             block_id = mem_layout.block_id(i_id)
             bank_id = mem_layout.bank_id(i_id)
             offset = mem_layout.offset(i_id)
-            node = dfg.make_mem(block_id, bank_id, offset)
-            l1_fanin_list.append(node)
-            l1_weight_list.append(w)
-            l1_fanin_num += 1
-            if l1_fanin_num == 16 :
-                node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
-                l2_fanin_list.append(node)
+            mem_node = dfg.make_mem(block_id, bank_id, offset)
+            if w == 0.25 :
+                n = 2
+            else :
+                n = 1
+            if l1_fanin_num + n >= 16 :
+                op_node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
+                l2_fanin_list.append(op_node)
                 l1_fanin_list = []
                 l1_fanin_num = 0
                 l1_weight_list = []
+            l1_fanin_list.append(mem_node)
+            l1_weight_list.append(w)
+            l1_fanin_num += n
+
         if l1_fanin_num > 0 :
-            node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
-            l2_fanin_list.append(node)
+            op_node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
+            l2_fanin_list.append(op_node)
         node = dfg.make_op(l2_fanin_list, 2)
 
     return dfg
