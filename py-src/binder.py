@@ -9,28 +9,125 @@
 
 
 from scheduling import scheduling
+from bipartite import bipartite_matching
 
 debug = False
 
-def left_edge(dfg) :
-    var_list = dfg.var_list
+
+### @brief life-time がオーバーラップしているか調べる．
+def is_overlap(start1, end1, start2, end2) :
+    # 順序を正規化する．
+    if start1 > start2 :
+        start1, start2 = start2, start1
+        end1, end2 = end2, end1
+
+    if start2 < end1 :
+        if end1 < end2 :
+            return start2, end1
+        else :
+            return start2, end2
+    else :
+        return None
+
+
+def is_compatible(node1, node2) :
+    if node1.is_mem :
+        if node2.is_mem :
+            if node1.block_id == node2.block_id and node1.offset == node2.offset :
+                return True
+        return False
+    elif node1.is_op1 :
+        if node2.is_op1 :
+            if node1.op_id == node2.op_id :
+                return True
+            return False
+        return False
+    return False
+
+
+### @brief レジスタ割り当てを行う．
+def bind_register(dfg) :
+    # 全変数のリスト
+    var_list = list(dfg.var_list)
     # start, end でソートする．
     var_list.sort()
 
-    reg_id = 0
-    while len(var_list) > 0 :
-        new_var_list = list()
-        last = 0
-        for var in var_list :
-            if last <= var.start :
-                var.bind(reg_id)
-                last = var.end
-            else :
-                new_var_list.append(var)
-        reg_id += 1
-        var_list = new_var_list
+    # 現在のレジスタ数
+    reg_num = 0
 
-    return reg_id
+    # 各レジスタに割り当てられた変数のリストを持つ配列
+    # サイズは reg_num
+    varmap_list = list()
+
+    # すべての変数に割り当てを行うまでループを繰り返す．
+    while len(var_list) > 0 :
+        # 最初の変数と line-time が重複している変数を取り出す．
+        seed_var = var_list[0]
+        seed_start = seed_var.start
+        seed_end = seed_var.end
+        cur_var_list = list()
+        for var in var_list :
+            res = is_overlap(seed_start, seed_end, var.start, var.end)
+            if res :
+                seed_start, seed_end = res
+                cur_var_list.append(var)
+            elif seed_end < var.start :
+                # これ以降は絶対にオーバーラップしない．
+                break
+
+        # cur_var_list の変数に関連付けられたノードのリスト
+        cur_node_list = [ dfg.node_list[var.src_id] for var in cur_var_list ]
+        n2 = len(cur_node_list)
+
+        # cur_var_list に含まれる変数にレジスタ割り当てを行う．
+        # 各変数に関連付けられたノードとバインドしている演算器
+        # が共通のレジスタを優先的に割り当てる．
+        edge_list = list()
+        for reg_id in range(reg_num) :
+            node_list1 = [ dfg.node_list[var.src_id] for var in varmap_list[reg_id] ]
+            for i, node in enumerate(cur_node_list) :
+                for node1 in node_list1 :
+                    if is_compatible(node, node1) :
+                        edge_list.append( (reg_id, i) )
+                        break
+
+        # 2部グラフの最大マッチングを求める．
+        match = bipartite_matching(reg_num, n2, edge_list)
+
+        bound_vars = set()
+        bound_regs = set()
+
+        # マッチング結果に基づいて割り当てを行う．
+        for reg_id, var_id in match :
+            var = cur_var_list[var_id]
+            var.bind(reg_id)
+            varmap_list[reg_id].append(var)
+            bound_vars.add(var_id)
+            bound_regs.add(reg_id)
+
+        # 残りの変数は適当に割り当てる．
+        for i, var in enumerate(cur_var_list) :
+            if i in bound_vars :
+                continue
+            # 未割り当てのレジスタを見つける．
+            for reg_id in range(reg_num) :
+                if reg_id in bound_regs :
+                    continue
+                # 空きを見つけた．
+                var.bind(reg_id)
+                varmap_list[reg_id].append(var)
+                bound_regs.add(reg_id)
+                break
+            else :
+                # 未割り当てレジスタを見つけられなかった．
+                reg_id = reg_num
+                reg_num += 1
+                varmap_list.append(list())
+                var.bind(reg_id)
+                varmap_list[reg_id].append(var)
+                bound_regs.add(reg_id)
+
+        return reg_num
 
 
 ### @brief セレクタの入力のバインディングを行う．
@@ -179,8 +276,8 @@ def bind(dfg) :
         node.bind(op_id)
         op2_count[step] += 1
 
-    # レジスタは単純なレフトエッジ法で割り当てる．
-    reg_num = left_edge(dfg)
+    # レジスタ割り当てを行う．
+    reg_num = bind_register(dfg)
 
     # セレクタの生成を行う．
     alloc_selecter(dfg, reg_num)
