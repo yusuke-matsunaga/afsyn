@@ -10,28 +10,9 @@
 
 from scheduling import scheduling
 from bipartite import bipartite_matching
+from unit import LoadUnit, StoreUnit, Op1Unit, Op2Unit, RegUnit
 
 debug = False
-
-### @brief セレクタの仕様を表すクラス
-class MuxSpec :
-
-    ### @brief 初期化
-    def __init__(self) :
-        self.__src_dict = dict()
-
-    ### @brief 入力のソースを表す辞書を返す．
-    @property
-    def src_dict(self) :
-        return self.__src_dict
-
-    ### @brief 入力を追加する．
-    ### @param[in] cstep コントロールステップ
-    ### @param[in] src_id ソースのレジスタ番号
-    def add_src(self, cstep, src_id) :
-        if src_id not in self.__src_dict :
-            self.__src_dict[src_id] = list()
-        self.__src_dict[src_id].append(cstep)
 
 
 ### @brief OP1の仕様を表すクラス
@@ -101,6 +82,7 @@ class Op2Spec :
         return self.__mux_spec[i]
 
     ### @brief bias値の辞書を返す．
+    @property
     def bias_map(self) :
         return self.__bias_map
 
