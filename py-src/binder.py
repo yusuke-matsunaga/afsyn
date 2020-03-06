@@ -28,9 +28,10 @@ class MuxSpec :
     ### @brief 入力を追加する．
     ### @param[in] cstep コントロールステップ
     ### @param[in] src_id ソースのレジスタ番号
-    ### @param[in] inv 反転する時に True にするフラグ
-    def add_src(self, cstep, src_id, inv) :
-        self.__src_dict[cstep] = src_id, inv
+    def add_src(self, cstep, src_id) :
+        if src_id not in self.__src_dict :
+            self.__src_dict[src_id] = list()
+        self.__src_dict[src_id].append(cstep)
 
 
 ### @brief OP1の仕様を表すクラス
@@ -41,6 +42,7 @@ class Op1Spec :
     def __init__(self, input_num) :
         self.__input_num = input_num
         self.__mux_spec = [ MuxSpec() for i in range(input_num) ]
+        self.__inv_cond_list = [ list() for i in range(input_num) ]
 
     ### @brief 入力数を返す．
     @property
@@ -53,12 +55,18 @@ class Op1Spec :
     ### @param[in] src_id ソースのレジスタ番号
     ### @param[in] inv 反転する時に True にするフラグ
     def add_src(self, i, cstep, src_id, inv) :
-        self.__mux_spec[i].add_src(cstep, src_id, inv)
+        self.__mux_spec[i].add_src(cstep, src_id)
+        if inv :
+            self.__inv_cond_list[i].append(cstep)
 
     ### @brief 入力のセレクタ情報を返す．
     ### @param[in] i 入力番号
     def mux_spec(self, i) :
         return self.__mux_spec[i]
+
+    ### @brief 入力の反転条件(コントロールステップ)を返す．
+    def inv_cond(self, i) :
+        return self.__inv_cond_list[i]
 
 
 ### @brief OP2の仕様を表すクラス
@@ -81,7 +89,7 @@ class Op2Spec :
     ### @param[in] cstep コントロールステップ
     ### @param[in] src_id ソースのレジスタ番号
     def add_src(self, i, cstep, src_id) :
-        self.__mux_spec[i].add_src(cstep, src_id, False)
+        self.__mux_spec[i].add_src(cstep, src_id)
 
     ### @brief cstep ごとの bias 値を設定する．
     def add_bias(self, cstep, bias) :
@@ -104,7 +112,8 @@ class RegSpec :
     ### @param[in] id レジスタ番号
     def __init__(self, id) :
         self.__id = id
-        self.__src_map = dict()
+        self.__memsrc_map = dict()
+        self.__opsrc_map = dict()
 
     ### @brief レジスタ番号を返す．
     @property
@@ -113,15 +122,30 @@ class RegSpec :
 
     ### @brief ソースの情報を追加する(メモリブロック)．
     def add_memsrc(self, cstep, mem_block, mem_bank, mem_offset) :
-        self.__src_map[cstep] = mem_block, mem_bank, mem_offset
+        key = mem_block, mem_offset
+        if key not in self.__memsrc_map :
+            self.__memsrc_map[key] = list()
+        self.__memsrc_map[key].append( (cstep, mem_bank) )
 
     ### @brief ソースの情報を追加する(演算器)
     def add_opsrc(self, cstep, op_id) :
-        self.__src_map[cstep] = op_id
+        if op_id not in self.__opsrc_map :
+            self.__opsrc_map[op_id] = list()
+        self.__opsrc_map[op_id].append(cstep)
 
-    ### @brief ソースの辞書を返す．
-    def src_map(self) :
-        return self.__src_map
+    ### @brief メモリブロックソースの辞書を返す．
+    ###
+    ### (mem_block, mem_offset) をキーとして，そのブロックを使う
+    ### コントロールステップとオフセットのペアのリストを格納する．
+    def memsrc_map(self) :
+        return self.__memsrc_map
+
+    ### @brief 演算器ブロックソースの辞書を返す．
+    ###
+    ### 演算器番号をキーとしてそのブロックを使う
+    ### コントロールステップのリストを格納する．
+    def opsrc_map(self) :
+        return self.__opsrc_map
 
 
 ### @brief life-time がオーバーラップしているか調べる．

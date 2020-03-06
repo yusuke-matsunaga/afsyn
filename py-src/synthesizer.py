@@ -64,11 +64,16 @@ if __name__ == '__main__' :
 
                     for reg_spec in reg_list :
                         print('REG#{}:'.format(reg_spec.id))
-                        for cstep, src in reg_spec.src_map().items() :
-                            if isinstance(src, int) :
-                                print('  REG#{}@{}'.format(src, cstep))
-                            else :
-                                print('  MEM{}@{}'.format(src, cstep))
+                        for (block, offset), s_list in sorted(reg_spec.memsrc_map().items()) :
+                            print('  MEM#{}[{}]:'.format(block, offset), end = '')
+                            for cstep, bank in s_list :
+                                print(' bank#{}@{}'.format(bank, cstep), end = '')
+                            print()
+                        for op_id, s_list in sorted(reg_spec.opsrc_map().items()) :
+                            print('  OP#{}:'.format(op_id), end = '')
+                            for cstep in s_list :
+                                print(' @{}'.format(cstep), end = '')
+                            print()
                         print()
 
                     for op_id, op1_spec in enumerate(op1_list) :
@@ -76,12 +81,18 @@ if __name__ == '__main__' :
                         for i in range(op1_spec.input_num) :
                             mux = op1_spec.mux_spec(i)
                             print('  I#{}:'.format(i))
-                            for cstep, (src_id, inv) in mux.src_dict.items() :
+                            for src_id, s_list in sorted(mux.src_dict.items()) :
                                 if src_id == -1 :
-                                    print('     C0@{}'.format(cstep))
+                                    print('     C0:', end = '')
                                 else :
-                                    minus = '-' if inv else ' '
-                                    print('    {}REG#{}@{}'.format(minus, src_id, cstep))
+                                    print('     REG#{}:'.format(src_id), end = '')
+                                for cstep in s_list :
+                                    print(' @{}'.format(cstep), end = '')
+                                print()
+                            print('     INV condition: ', end = '')
+                            for cstep in op1_spec.inv_cond(i) :
+                                print(' @{}'.format(cstep), end = '')
+                            print()
                             print()
                         print()
 
@@ -90,13 +101,15 @@ if __name__ == '__main__' :
                         for i in range(op2_spec.input_num) :
                             mux = op2_spec.mux_spec(i)
                             print('  I#{}:'.format(i))
-                            for cstep, (src_id, inv) in mux.src_dict.items() :
+                            for src_id, s_list in sorted(mux.src_dict.items()) :
                                 if src_id == -1 :
-                                    print('    C0@{}'.format(cstep))
+                                    print('     C0:', end = '')
                                 else :
-                                    print('    REG#{}@{}'.format(src_id, cstep))
-                            print()
+                                    print('     REG#{}:'.format(src_id), end = '')
+                                for cstep in s_list :
+                                    print(' @{}'.format(cstep), end = '')
+                                print()
                         print('  BIAS')
-                        for cstep, bias in op2_spec.bias_map().items() :
+                        for cstep, bias in sorted(op2_spec.bias_map().items()) :
                             print('    {}@{}'.format(bias, cstep))
                         print()
