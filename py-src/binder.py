@@ -140,21 +140,6 @@ def is_overlap(start1, end1, start2, end2) :
         return None
 
 
-def is_compatible(node1, node2) :
-    if node1.is_mem :
-        if node2.is_mem :
-            if node1.block_id == node2.block_id and node1.offset == node2.offset :
-                return True
-        return False
-    elif node1.is_op1 :
-        if node2.is_op1 :
-            if node1.op_id == node2.op_id :
-                return True
-            return False
-        return False
-    return False
-
-
 ### @brief レジスタ割り当てを行う．
 def bind_register(dfg) :
     # 全変数のリスト
@@ -329,6 +314,10 @@ def input_binding(src_list_map, max_fanin) :
                     break
             else :
                 assert False
+        # 未使用の入力ソースを -1 にしておく
+        for i in range(max_fanin) :
+            if i not in used :
+                bound_src_list[i] = -1, False
         # bound_src_list の内容を sel_src_list に移す．
         for i, (src, inv) in enumerate(bound_src_list) :
             sel_src_list[i][cstep] = src, inv
@@ -381,7 +370,7 @@ def alloc_selecter(dfg) :
 
     # OP2 のファンインのセレクタ生成
     src_list_map_dict = dict()
-    bias_map = dict()
+    bias_map_dict = dict()
     for node in dfg.op2node_list :
         src_list = list()
         for inode in node.fanin_list :
@@ -390,8 +379,9 @@ def alloc_selecter(dfg) :
         op_id = node.op_id
         if op_id not in src_list_map_dict :
             src_list_map_dict[op_id] = dict()
+            bias_map_dict[op_id] = dict()
         src_list_map_dict[op_id][node.cstep] = src_list
-        bias_map[node.cstep] = node.bias
+        bias_map_dict[op_id][node.cstep] = node.bias
 
     op2_list = list()
     for op_id in range(dfg.op2_num) :
@@ -405,7 +395,7 @@ def alloc_selecter(dfg) :
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src_id, inv) in sel_src.items() :
                 op2_spec.add_src(i, cstep, src_id)
-        for cstep, bias in bias_map.items() :
+        for cstep, bias in bias_map_dict[op_id].items() :
             op2_spec.add_bias(cstep, bias)
 
         op2_list.append(op2_spec)

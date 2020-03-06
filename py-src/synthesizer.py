@@ -65,7 +65,10 @@ if __name__ == '__main__' :
                     for reg_spec in reg_list :
                         print('REG#{}:'.format(reg_spec.id))
                         for cstep, src in reg_spec.src_map().items() :
-                            print('  {}@{}'.format(src, cstep))
+                            if isinstance(src, int) :
+                                print('  REG#{}@{}'.format(src, cstep))
+                            else :
+                                print('  MEM{}@{}'.format(src, cstep))
                         print()
 
                     for op_id, op1_spec in enumerate(op1_list) :
@@ -74,8 +77,11 @@ if __name__ == '__main__' :
                             mux = op1_spec.mux_spec(i)
                             print('  I#{}:'.format(i))
                             for cstep, (src_id, inv) in mux.src_dict.items() :
-                                minus = '-' if inv else ' '
-                                print('    {}{}@{}'.format(minus, src_id, cstep))
+                                if src_id == -1 :
+                                    print('     C0@{}'.format(cstep))
+                                else :
+                                    minus = '-' if inv else ' '
+                                    print('    {}REG#{}@{}'.format(minus, src_id, cstep))
                             print()
                         print()
 
@@ -85,7 +91,10 @@ if __name__ == '__main__' :
                             mux = op2_spec.mux_spec(i)
                             print('  I#{}:'.format(i))
                             for cstep, (src_id, inv) in mux.src_dict.items() :
-                                print('    {}@{}'.format(src_id, cstep))
+                                if src_id == -1 :
+                                    print('    C0@{}'.format(cstep))
+                                else :
+                                    print('    REG#{}@{}'.format(src_id, cstep))
                             print()
                         print('  BIAS')
                         for cstep, bias in op2_spec.bias_map().items() :
