@@ -450,7 +450,7 @@ def bind(dfg) :
 if __name__ == '__main__' :
     import sys
     import os
-    from op import Op, read_op
+    from op import Op
     from dfg import make_graph
     from mem_layout import MemLayout
 
@@ -461,7 +461,7 @@ if __name__ == '__main__' :
     filename = sys.argv[1]
     op_list = None
     with open(filename, 'rt') as fin :
-        op_list = read_op(fin)
+        op_list = Op.read(fin)
 
     if op_list is None :
         print('read failed.')

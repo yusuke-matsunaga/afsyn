@@ -37,6 +37,17 @@ class Op :
     def add_fanin(self, i_id, w) :
         self.__fanin_list.append( (i_id, w) )
 
+    ### @brief 値の計算を行う．
+    ### @param[in] ivals 入力の値のリスト
+    ###
+    ### ivals は ivals[x] で値が取得できればなんでもよい．
+    def eval(self, ivals) :
+        ans = 0
+        for i_id, w in self.fanin_list :
+            ival = ivals[i_id]
+            ans += ival * w
+        return ans
+
     ### @brief 内容をダンプする．
     def dump(self, fout) :
         fout.write('{}:'.format(self.__id))
@@ -47,40 +58,43 @@ class Op :
         fwout.write('\n')
 
 
-### @brief dump したファイルを読み込む．
-def read_op(fin) :
-    pID = re.compile(R'(\d*):')
-    pBODY = re.compile(R'\s*\((\d*), (-?\d*.\d*)\)')
-    pCOMMA = re.compile(R',')
-    op_list = list()
-    while True :
-        line = fin.readline()
-        if line == '' :
-            # EOF
-            break
-
-        line = line.rstrip()
-        if line == '' :
-            continue
-
-        m = pID.match(line)
-        assert m is not None
-        id = int(m.group(1))
-        op = Op(id)
-        start = m.end(0)
+    ### @brief dump したファイルを読み込む．
+    ### @param[in] fin 入力のファイルオブジェクト
+    ### @return Op のリストを返す．
+    @staticmethod
+    def read(fin) :
+        pID = re.compile(R'(\d*):')
+        pBODY = re.compile(R'\s*\((\d*), (-?\d*.\d*)\)')
+        pCOMMA = re.compile(R',')
+        op_list = list()
         while True :
-            m = pBODY.match(line, start)
-            assert m is not None
-            i_id = int(m.group(1))
-            w = float(m.group(2))
-            op.add_fanin(i_id, w)
-            start = m.end(0)
-            m = pCOMMA.match(line, start)
-            if not m :
+            line = fin.readline()
+            if line == '' :
+                # EOF
                 break
+
+            line = line.rstrip()
+            if line == '' :
+                continue
+
+            m = pID.match(line)
+            assert m is not None
+            id = int(m.group(1))
+            op = Op(id)
             start = m.end(0)
-        op_list.append(op)
-    return op_list
+            while True :
+                m = pBODY.match(line, start)
+                assert m is not None
+                i_id = int(m.group(1))
+                w = float(m.group(2))
+                op.add_fanin(i_id, w)
+                start = m.end(0)
+                m = pCOMMA.match(line, start)
+                if not m :
+                    break
+                start = m.end(0)
+            op_list.append(op)
+        return op_list
 
 
 if __name__ == '__main__' :
@@ -92,7 +106,7 @@ if __name__ == '__main__' :
 
     filename = sys.argv[1]
     with open(filename, 'rt') as fin :
-        op_list = read_op(fin)
+        op_list = Op.read(fin)
 
         for op in op_list :
             op.dump(sys.stdout)
