@@ -75,6 +75,7 @@ class BiNode :
         self.__alt_edge = alt_edge
 
     ### @brief ヒープ上のインデックスを返す．
+    @property
     def index(self) :
         return self.__index
 
@@ -159,7 +160,7 @@ class Heap :
                 # 更新しない
                 return
             node.update(alt_edge, value)
-        slef.move_up(pos)
+        self.move_up(pos)
 
     ### @brief 最大の要素を取り出す．
     def get(self) :
@@ -201,6 +202,7 @@ class Heap :
                     self.locate(l_pos, pos)
                 break
             else :
+                r_node = self.__heap[r_pos]
                 if l_node.value > r_node.value :
                     if l_node.value > node.value :
                         self.locate(pos, l_node)
@@ -220,73 +222,63 @@ class Heap :
         node.set_index(pos)
 
 
-def dfs(l_node, path, visited) :
-    # l_node に接続している枝を調べる．
-    for edge in l_node.edge_list :
-        if edge.is_selected :
-            continue
-        r_node = edge.node2
-        if r_node.id in visited :
-            continue
-        visited.add(r_node.id)
-        if r_node.is_selected :
-            # 選択されている枝を見つける．
-            r_edge = None
-            for edge1 in r_node.edge_list :
-                if edge1.is_selected :
-                    r_edge = edge1
-                    break
-            else :
-                assert False
-            path1 = path + [edge, r_edge]
-            path1 = dfs(r_edge.node1, path1, visited)
-            if path1 :
-                return path1
-        else :
-            # 見つけた．
-            return path + [edge]
-    return None
+### @brief 枝をたどって経路を作る．
+def make_path(edge1, node1) :
+    edge2 = node1.selected_edge
+    if edge2 is None :
+        return [ edge1 ]
+    else :
+        node2 = edge2.node2
+        edge3 = node1.alt_edge
+        assert edge3.node2 == node2
+        path = make_path(edge3, edge3.node1)
+        return path + [ edge2, edge1 ]
 
 
-### @brief 増加路を求める．
+### @brief 重み最大の増加路を求める．
 ### @param[in] l_nodes Node1 のリスト
 ### @param[in] r_nodes Node2 のリスト
 ### @param[in] edge_list 枝のリスト
 ### 増加路は選ばれた枝と選ばれていない枝が交互に現れる
 ### 経路のうち，選ばれていない枝の重みの和から選ばれた
 ### 枝の重みの和を引いたものが正のもの．
-### ここではそれらのなかで経路長が最小のものを返す．
+###
+### このアルゴリズムの性質上，片方の端が選ばれていない
+### 枝から始まり，片方の端が選ばれていない枝で終わる
+### 奇数長の経路のみ考えればよい．
 def find_path(l_nodes, r_nodes, edge_list) :
     for node in l_nodes :
         node.init_heap()
 
     queue = Heap(len(l_nodes))
+
     for node1 in l_nodes :
         if not node1.is_selected :
             # 選択されていないノードをキューに積む．
             queue.put(node1, None, 0)
 
+    # queue から値を大きいノードを取り出して BFS を行う．
+    max_value = 0
+    max_path = None
     while queue.num > 0 :
         node1 = queue.get()
         for edge1 in node1.edge_list :
-            if edge1.selected :
+            if edge1.is_selected :
                 continue
             value = node1.value + edge1.weight
             node2 = edge1.node2
             if not node2.is_selected :
-                # 両端が選ばれていない枝があった．
-                if value > 0 :
-                    return make_path(edge1, node1)
+                # edge1 の端は未選択だった．
+                if max_value < value :
+                    # 増加路になっていれば終わる．
+                    max_value = value
+                    max_path = make_path(edge1, node1)
             else :
                 edge2 = node2.selected_edge
                 node3 = edge2.node1
                 value -= edge2.weight
-                if value > 0 :
-                    # この時点で増加路になっている．
-                    path = make_path(edge1, node1)
-                    path.append(edge2)
-                    return path
                 queue.put(node3, edge1, value)
+    return max_path
 
 
 ### @brief 二部グラフの最大重みマッチングを行う．
@@ -304,6 +296,8 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         return list()
     assert n_l > 0
     assert n_r > 0
+
+    # 二部グラフの構造を表すオブジェクトを作る．
     l_nodes = [ BiNode(i) for i in range(n_l) ]
     r_nodes = [ BiNode(i) for i in range(n_r) ]
     edge_list = list()
@@ -315,15 +309,6 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         r_node.add_edge(edge)
         edge_list.append(edge)
 
-    # 初期マッチングを求める．
-    path1 = list()
-    val1 = 0
-    for edge in edge_list :
-        if not edge.node1.is_selected and not edge.node2.is_selected :
-            path1.append(edge)
-            edge.select()
-            val1 += edge.weight
-
     # 増加路を見つける．
     while True :
         a_path = find_path(l_nodes, r_nodes, edge_list)
@@ -333,7 +318,7 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         else :
             break
 
-    return [ (edge.node1.id, edge.node2.id) for edge in path1 ]
+    return [ (edge.node1.id, edge.node2.id) for edge in edge_list if edge.is_selected ]
 
 
 if __name__ == '__main__' :
@@ -361,4 +346,10 @@ if __name__ == '__main__' :
 
     print()
     for l, r in ans2_list :
+        print('{} - {}'.format(l, r))
+
+    ans3_list = bipartite_matching(2, 2, [(0, 0, 1), (1, 0, 3), (1, 1, 1)])
+
+    print()
+    for l, r in ans3_list :
         print('{} - {}'.format(l, r))
