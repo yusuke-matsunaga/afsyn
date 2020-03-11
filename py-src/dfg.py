@@ -22,11 +22,22 @@ class Node :
         self.__fanin_list = fanin_list
         self.__cstep = -1
         self.__var = None
+        self.__unit_id = -1
+
+    ### @brief Unit に割り当てる．
+    ### @param[in] unit_id ユニット番号
+    def bind(self, unit_id) :
+        self.__unit_id = unit_id
 
     ### @brief ID番号を返す．
     @property
     def id(self) :
         return self.__id
+
+    ### @brief 対応する Load Unit の番号を返す．
+    @property
+    def unit_id(self) :
+        return self.__unit_id
 
     ### @brief ファンインノードのリスト
     @property
@@ -120,7 +131,6 @@ class OpNode(Node) :
         super().__init__(id, fanin_list)
         self.__level = level
         self.__weight_list = weight_list
-        self.__op_id = -1
 
     ### @brief OP1ノードのとき True を返す．
     @property
@@ -155,16 +165,6 @@ class OpNode(Node) :
                 ans += inode.bias
         return ans
 
-    ### @brief 演算器に割り当てる．
-    ### @param[in] op_id 演算器ID
-    def bind(self, op_id) :
-        self.__op_id = op_id
-
-    ### @brief 演算器番号を返す．
-    @property
-    def op_id(self) :
-        return self.__op_id
-
 
 ### @brief 変数を表すクラス
 class Var :
@@ -177,7 +177,7 @@ class Var :
         self.__tgt_id_list = []
         self.__start = start
         self.__end = -1
-        self.__reg_id = -1
+        self.__unit_id = -1
 
     ### @brief ターゲットIDを追加する．
     ### @param[in] tgt_id 追加するターゲットID
@@ -208,15 +208,17 @@ class Var :
     def end(self) :
         return self.__end
 
-    ### @brief レジスタIDを返す．
+    ### @brief Unit 番号を返す．
     @property
-    def reg_id(self) :
-        return self.__reg_id
+    def unit_id(self) :
+        return self.__unit_id
 
-    ### @brief レジスタに割り当てる．
-    ### @param[in] reg_id レジスタID
-    def bind(self, reg_id) :
-        self.__reg_id = reg_id
+    ### @brief Unit に割り当てる．
+    ### @param[in] unit_id レジスタID
+    ###
+    ### 普通はレジスタだが Load Unit の場合がある．
+    def bind(self, unit_id) :
+        self.__unit_id = unit_id
 
     ### @brief 比較演算子
     def __lt__(self, other) :
@@ -395,7 +397,7 @@ class DFG :
                         reg_map_list[step].add( (inode.block_id, inode.bank_id, inode.offset) )
                 else :
                     for step in range(istep, ostep) :
-                        reg_map_list[step].add( inode.op_id )
+                        reg_map_list[step].add( inode.unit_id )
         reg_num = 0
         for step in range(self.total_step) :
             n = len(reg_map_list[step])

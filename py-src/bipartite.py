@@ -310,8 +310,6 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         r_node.add_edge(edge)
         edge_list.append(edge)
 
-    print('#1: {}, #2: {}, #E: {}'.format(len(l_nodes), len(r_nodes), len(edge_list)))
-
     # 初期マッチングを求める．
     ne0 = 0
     v0 = 0
@@ -321,8 +319,6 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         edge.select()
         ne0 += 1
         v0 += edge.weight
-
-    print('initial weight = {}, #E = {}'.format(v0, ne0))
 
     # 増加路を見つける．
     while True :

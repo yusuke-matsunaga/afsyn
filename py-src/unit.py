@@ -19,7 +19,7 @@ class MuxSpec :
     ### @param[in] src_id ソースの演算器番号
     ### @param[in] cstep コントロールステップ
     def add_src(self, src_id, cstep) :
-        if src_id not in self.__src_dict :
+        if src_id not in self.__src_cond_dict :
             self.__src_cond_dict[src_id] = list()
             self.__src_list.append(src_id)
         self.__src_cond_dict[src_id].append(cstep)
@@ -55,7 +55,7 @@ class Unit :
     ### @param[in] src_id ソースのレジスタ番号
     ### @param[in] cstep コントロールステップ
     def add_src(self, i, src_id, cstep) :
-        self.__mux_spec[i].add_src(src_id, cstep)
+        self.__mux_list[i].add_src(src_id, cstep)
 
     ### @brief 入力数を返す．
     @property
@@ -65,7 +65,7 @@ class Unit :
     ### @brief 入力のセレクタ情報を返す．
     ### @param[in] i 入力番号
     def mux_spec(self, i) :
-        return self.__mux_spec[i]
+        return self.__mux_list[i]
 
     ### @brief ロードユニットのときに True を返す．
     def is_load_unit(self) :
@@ -94,12 +94,10 @@ class LoadUnit(Unit) :
     ### @brief 初期化
     ### @param[in] id 演算器番号
     ### @param[in] block_id ブロック番号
-    ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def __init__(self, id, block_id, bank_id, offset) :
+    def __init__(self, id, block_id, offset) :
         super().__init__(id, 0)
         self.__block_id = block_id
-        self.__bank_id = bank_id
         self.__offset = offset
 
     ### @brief ロードユニットのときに True を返す．
@@ -109,10 +107,6 @@ class LoadUnit(Unit) :
     ### @brief ブロック番号を返す．
     def block_id(self) :
         return self.__block_id
-
-    ### @brief バンク番号を返す．
-    def bank_id(self) :
-        return self.__bank_id
 
     ### @brief オフセットを返す．
     def offset(self) :
@@ -125,12 +119,10 @@ class StoreUnit(Unit) :
     ### @brief 初期化
     ### @param[in] id 演算器番号
     ### @param[in] block_id ブロック番号
-    ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def __init__(self, id, block_id, bank_id, offset) :
+    def __init__(self, id, block_id, offset) :
         super().__init__(id, 1)
         self.__block_id = block_id
-        self.__bank_id = bank_id
         self.__offset = offset
 
     ### @brief ストアユニットのときに True を返す．
@@ -140,10 +132,6 @@ class StoreUnit(Unit) :
     ### @brief ブロック番号を返す．
     def block_id(self) :
         return self.__block_id
-
-    ### @brief バンク番号を返す．
-    def bank_id(self) :
-        return self.__bank_id
 
     ### @brief オフセットを返す．
     def offset(self) :
@@ -207,34 +195,36 @@ class Op2Unit(Unit) :
 class RegUnit(Unit) :
 
     ### @brief 初期化
-    ### @param[in] id レジスタ番号
-    def __init__(self, id) :
+    ### @param[in] id ユニット番号
+    ### @param[in] reg_id レジスタ番号
+    def __init__(self, id, reg_id) :
         super().__init__(id, 1)
+        self.__reg_id = reg_id
         self.__var_list = list()
         self.__last_step = 0
-        self.__memsrc_map = dict()
-        self.__opsrc_map = dict()
-
-    ### @brief 変数を割り当てる．
-    def bind_var(self, var) :
-        self.__var_list.append(var)
-        if self.__last_step < var.end :
-            self.__last_step = var.end
+        self.__src_map = dict()
 
     ### @brief ソースの情報を追加する．
     def add_src(self, node) :
         var = node.var
+        self.__var_list.append(var)
+        if self.__last_step < var.end :
+            self.__last_step = var.end
+        var.bind(self.reg_id)
         cstep = var.start
-        if node.is_mem :
-            key = node.block_id, node.offset
-            if key not in self.__memsrc_map :
-                self.__memsrc_map[key] = list()
-            self.__memsrc_map[key].append( (cstep, node.bank_id) )
-        else :
-            op_id = node.op_id
-            if op_id not in self.__opsrc_map :
-                self.__opsrc_map[op_id] = list()
-            self.__opsrc_map[op_id].append(cstep)
+        op_id = node.unit_id
+        if op_id not in self.__src_map :
+            self.__src_map[op_id] = list()
+        self.__src_map[op_id].append(cstep)
+
+    ### @brief レジスタのときに True を返す．
+    def is_reg_unit(self) :
+        return True
+
+    ### @brief レジスタ番号を返す．
+    @property
+    def reg_id(self) :
+        return self.__reg_id
 
     ### @brief 割り当てられている変数のリストを返す．
     @property
@@ -248,28 +238,101 @@ class RegUnit(Unit) :
 
     ### @brief 同じソースがあったら True を返す．
     def has_samesrc(self, node) :
-        if node.is_mem :
-            key = node.block_id, node.offset
-            return key in self.__memsrc_map
-        else :
-            return node.op_id in self.__opsrc_map
+        return node.unit_id in self.__src_map
 
-    ### @brief メモリブロックソースの辞書を返す．
+    ### @brief ソースの辞書を返す．
     ###
-    ### (mem_block, mem_offset) をキーとして，そのブロックを使う
-    ### コントロールステップとバンク番号のペアのリストを返す．
+    ### キーはユニット番号で値は cstep のリスト
     @property
-    def memsrc_map(self, block, offset) :
-        return self.__memsrc_map
+    def src_map(self) :
+        return self.__src_map
 
-    ### @brief 演算器ブロックソースの辞書を返す．
-    ###
-    ### 演算器番号をキーとしてそのブロックを使う
-    ### コントロールステップのリストを格納する．
+
+### @brief 演算器を管理するマネージャ
+class UnitMgr :
+
+    ### @brief 初期化
+    def __init__(self) :
+        self.__unit_list = list()
+        self.__lu_list = list()
+        self.__su_list = list()
+        self.__op1_list = list()
+        self.__op2_list = list()
+        self.__reg_list = list()
+
+    ### @brief 全てのユニットのリストを返す．
     @property
-    def opsrc_map(self) :
-        return self.__opsrc_map
+    def unit_list(self) :
+        return self.__unit_list
 
-    ### @brief レジスタのときに True を返す．
-    def is_reg_unit(self) :
-        return True
+    ### @brief Load Unit のリストを返す．
+    @property
+    def load_unit_list(self) :
+        return self.__lu_list
+
+    ### @brief Store Unit のリストを返す．
+    @property
+    def store_unit_list(self) :
+        return self.__su_list
+
+    ### @brief OP1 Unit のリストを返す．
+    @property
+    def op1_list(self) :
+        return self.__op1_list
+
+    ### @brief OP2 Unit のリストを返す．
+    @property
+    def op2_list(self) :
+        return self.__op2_list
+
+    ### @brief レジスタのリストを返す．
+    @property
+    def reg_list(self) :
+        return self.__reg_list
+
+    ### @brief Load Unit を作る．
+    ### @param[in] block_id ブロック番号
+    ### @param[in] offset オフセット
+    def new_load_unit(self, block_id, offset) :
+        id = len(self.__unit_list)
+        lu = LoadUnit(id, block_id, offset)
+        self.__unit_list.append(lu)
+        self.__lu_list.append(lu)
+        return lu
+
+    ### @brief Store Unit を作る．
+    ### @param[in] block_id ブロック番号
+    ### @param[in] offset オフセット
+    def new_store_unit(self, block_id, offset) :
+        id = len(self.__unit_list)
+        su = StoreUnit(id, block_id, offset)
+        self.__unit_list.append(su)
+        self.__su_list.append(su)
+        return su
+
+    ### @brief OP1 Unit を作る．
+    ### @param[in] input_num 入力数
+    def new_op1_unit(self, input_num) :
+        id = len(self.__unit_list)
+        op = Op1Unit(id, input_num)
+        self.__unit_list.append(op)
+        self.__op1_list.append(op)
+        return op
+
+    ### @brief OP2 Unit を作る．
+    ### @param[in] input_num 入力数
+    def new_op2_unit(self, input_num) :
+        id = len(self.__unit_list)
+        op = Op2Unit(id, input_num)
+        self.__unit_list.append(op)
+        self.__op2_list.append(op)
+        return op
+
+    ### @brief レジスタを作る．
+    def new_reg_unit(self) :
+        id = len(self.__unit_list)
+        reg_id = len(self.__reg_list)
+        reg = RegUnit(id, reg_id)
+        self.__unit_list.append(reg)
+        self.__reg_list.append(reg)
+        return reg
