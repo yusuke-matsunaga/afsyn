@@ -325,6 +325,16 @@ def bind(dfg) :
             lu_map[key] = lu
         node.bind(lu.id)
 
+    # Store Unit も一意に割り当てられる．
+    su_map = dict()
+    for node in dfg.memsinknode_list :
+        if node.block_id in su_map :
+            su = su_map[node.block_id]
+        else :
+            su = unit_mgr.new_store_unit(node.block_id)
+            su_map[node.block_id] = su
+        node.bind(su.id)
+
     # 演算器はとりあえずナイーブに割り当てる．
     op1_count = [ 0 for i in range(dfg.total_step) ]
     for node in dfg.op1node_list :
@@ -345,6 +355,9 @@ def bind(dfg) :
         op = unit_mgr.op2_list[pos]
         node.bind(op.id)
         op2_count[step] += 1
+        onode = node.fanout
+        su = unit_mgr.unit_list[onode.unit_id]
+        su.mux_spec(0).add_src(op.id, step)
 
     # レジスタ割り当てを行う．
     bind_register(dfg, unit_mgr)

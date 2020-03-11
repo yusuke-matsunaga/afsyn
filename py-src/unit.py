@@ -121,11 +121,9 @@ class StoreUnit(Unit) :
     ### @brief 初期化
     ### @param[in] id 演算器番号
     ### @param[in] block_id ブロック番号
-    ### @param[in] offset オフセット
-    def __init__(self, id, block_id, offset) :
+    def __init__(self, id, block_id) :
         super().__init__(id, 1)
         self.__block_id = block_id
-        self.__offset = offset
 
     ### @brief ストアユニットのときに True を返す．
     def is_store_unit(self) :
@@ -135,11 +133,6 @@ class StoreUnit(Unit) :
     @property
     def block_id(self) :
         return self.__block_id
-
-    ### @brief オフセットを返す．
-    @property
-    def offset(self) :
-        return self.__offset
 
 
 ### @brief OP1ユニット
@@ -306,10 +299,9 @@ class UnitMgr :
 
     ### @brief Store Unit を作る．
     ### @param[in] block_id ブロック番号
-    ### @param[in] offset オフセット
-    def new_store_unit(self, block_id, offset) :
+    def new_store_unit(self, block_id) :
         id = len(self.__unit_list)
-        su = StoreUnit(id, block_id, offset)
+        su = StoreUnit(id, block_id)
         self.__unit_list.append(su)
         self.__su_list.append(su)
         return su
@@ -366,6 +358,8 @@ class UnitMgr :
                 print('  Input#{}'.format(i), file = fout)
                 mux_spec = op1.mux_spec(i)
                 for src in mux_spec.src_list :
+                    if src == -1 :
+                        continue
                     print('    {} @ ('.format(src), end = '', file = fout)
                     cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
@@ -381,6 +375,8 @@ class UnitMgr :
                 print('  Input#{}'.format(i), file = fout)
                 mux_spec = op2.mux_spec(i)
                 for src in mux_spec.src_list :
+                    if src == -1 :
+                        continue
                     print('    {} @ ('.format(src), end = '', file = fout)
                     cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
@@ -393,3 +389,13 @@ class UnitMgr :
         for su in self.store_unit_list :
             print('Unit#{}'.format(su.id), file = fout)
             print('  memory block: {}'.format(su.block_id), file = fout)
+            mux_spec = su.mux_spec(0)
+            for src in mux_spec.src_list :
+                if src == -1 :
+                    continue
+                print('    {} @ ('.format(src), end = '', file = fout)
+                cond_list = mux_spec.src_cond(src)
+                for cond in cond_list :
+                    print(' {}'.format(cond), end = '', file = fout)
+                print(')', file = fout)
+            print(file = fout)

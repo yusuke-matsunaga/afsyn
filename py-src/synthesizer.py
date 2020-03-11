@@ -120,7 +120,6 @@ if __name__ == '__main__' :
             for op_limit in op1_conf :
                 for s_method in s_conf :
                     dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
-                    op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
-                    print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
+                    print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
                     unit_mgr = bind(dfg)
                     unit_mgr.print(sys.stdout)
