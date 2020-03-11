@@ -15,20 +15,122 @@ from unit import UnitMgr
 debug = False
 
 
-### @brief life-time がオーバーラップしているか調べる．
-def is_overlap(start1, end1, start2, end2) :
-    # 順序を正規化する．
-    if start1 > start2 :
-        start1, start2 = start2, start1
-        end1, end2 = end2, end1
+def reg_bind1(dfg, unit_mgr, var_list) :
+    # cur_var_list に含まれる変数にレジスタ割り当てを行う．
+    # 各変数に関連付けられたノードとバインドしている演算器
+    # が共通のレジスタを優先的に割り当てる．
+    edge_list = list()
+    for reg in unit_mgr.reg_list :
+        for i, var in enumerate(var_list) :
+            if reg.last_step > var.start :
+                # life-time がオーバラップしている．
+                continue
+            node = dfg.node_list[var.src_id]
+            if reg.has_samesrc(node) :
+                w = 2
+            else :
+                w = 1
+            edge_list.append( (reg.reg_id, i, w) )
 
-    if start2 < end1 :
-        if end1 < end2 :
-            return start2, end1
-        else :
-            return start2, end2
-    else :
-        return None
+    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), len(var_list), len(edge_list)))
+    # 2部グラフの最大マッチングを求める．
+    match = bipartite_matching(len(unit_mgr.reg_list), len(var_list), edge_list)
+    print('matching end. total {} matches'.format(len(match)))
+
+    bound_vars = set()
+    bound_regs = set()
+
+    # マッチング結果に基づいて割り当てを行う．
+    for reg_id, var_id in match :
+        reg = unit_mgr.reg_list[reg_id]
+        var = cur_var_list[var_id]
+        node = dfg.node_list[var.src_id]
+        reg.add_src(node)
+        bound_vars.add(var_id)
+        bound_regs.add(reg_id)
+
+    # 残りの変数は適当に割り当てる．
+    for i, var in enumerate(var_list) :
+        if i in bound_vars :
+            continue
+        reg = unit_mgr.new_reg_unit()
+        node = dfg.node_list[var.src_id]
+        reg.add_src(node)
+
+
+def reg_bind2(dfg, unit_mgr, var_list) :
+    nvars = len(var_list)
+
+    # cur_var_list に含まれる変数にレジスタ割り当てを行う．
+    # 各変数に関連付けられたノードとバインドしている演算器
+    # が共通のレジスタを優先的に割り当てる．
+    edge_list = list()
+    for i, var in enumerate(var_list) :
+        for reg in unit_mgr.reg_list :
+            if reg.last_step > var.start :
+                # life-time がオーバラップしている．
+                continue
+            node = dfg.node_list[var.src_id]
+            if reg.has_samesrc(node) :
+                edge_list.append( (reg.reg_id, i, 1) )
+
+    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), nvars, len(edge_list)))
+    # 2部グラフの最大マッチングを求める．
+    match = bipartite_matching(len(unit_mgr.reg_list), nvars, edge_list)
+    print('matching end. total {} matches'.format(len(match)))
+
+    bound_vars = set()
+    bound_regs = set()
+
+    # マッチング結果に基づいて割り当てを行う．
+    for reg_id, var_id in match :
+        reg = unit_mgr.reg_list[reg_id]
+        var = var_list[var_id]
+        node = dfg.node_list[var.src_id]
+        reg.add_src(node)
+        bound_vars.add(var_id)
+        bound_regs.add(reg_id)
+
+    if len(bound_vars) == nvars :
+        return
+
+    # 残ったレジスタの割り当てを行う．
+    edge_list = list();
+    for i, var in enumerate(var_list) :
+        if i in bound_vars :
+            continue
+        for reg in unit_mgr.reg_list :
+            if reg.reg_id in bound_regs :
+                continue
+            if reg.last_step > var.start :
+                # life-time がオーバラップしている．
+                continue
+            edge_list.append( (reg.reg_id, i, 1) )
+
+    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), nvars, len(edge_list)))
+    # 2部グラフの最大マッチングを求める．
+    match = bipartite_matching(len(unit_mgr.reg_list), nvars, edge_list)
+    print('matching end. total {} matches'.format(len(match)))
+
+    # マッチング結果に基づいて割り当てを行う．
+    for reg_id, var_id in match :
+        reg = unit_mgr.reg_list[reg_id]
+        var = var_list[var_id]
+        node = dfg.node_list[var.src_id]
+        reg.add_src(node)
+        bound_vars.add(var_id)
+        bound_regs.add(reg_id)
+
+    if len(bound_vars) == nvars :
+        return
+
+    # 残りの変数は適当に割り当てる．
+    for i, var in enumerate(var_list) :
+        if i in bound_vars :
+            continue
+        reg = unit_mgr.new_reg_unit()
+        node = dfg.node_list[var.src_id]
+        reg.add_src(node)
 
 
 ### @brief レジスタ割り当てを行う．
@@ -38,17 +140,20 @@ def bind_register(dfg, unit_mgr) :
     # にはレジスタを使わない．
     var_list = list()
     for var in dfg.var_list :
-        inode = dfg.node_list[var.src_id]
-        if var.start + 1 == var.end and inode.is_mem :
-            # メモリブロックから直接演算器につながっている．
-            var.bind(inode.unit_id)
+        if var.start + 1 == var.end :
+            inode = dfg.node_list[var.src_id]
+            if inode.is_memsrc :
+                # メモリブロックから直接演算器につながっている．
+                var.bind(inode.unit_id)
+            elif inode.is_op2 :
+                # OP2 から直接メモリに書き込む．
+                var.bind(inode.unit_id)
         else :
             var_list.append(var)
     var_list.sort()
 
     # すべての変数に割り当てを行うまでループを繰り返す．
     while len(var_list) > 0 :
-        print('clustering begin: {} vars remain'.format(len(var_list)))
         # 最初の変数と line-time が重複している変数を取り出す．
         seed_var = var_list[0]
         seed_start = seed_var.start
@@ -56,7 +161,7 @@ def bind_register(dfg, unit_mgr) :
         cur_var_list = list()
         rest_var_list = list()
         for var in var_list :
-            res = is_overlap(seed_start, seed_end, var.start, var.end)
+            res = var.check_overlap(seed_start, seed_end)
             if res is not None :
                 seed_start, seed_end = res
                 cur_var_list.append(var)
@@ -64,48 +169,9 @@ def bind_register(dfg, unit_mgr) :
                 rest_var_list.append(var)
         var_list = rest_var_list
 
-        n2 = len(cur_var_list)
-
-        # cur_var_list に含まれる変数にレジスタ割り当てを行う．
-        # 各変数に関連付けられたノードとバインドしている演算器
-        # が共通のレジスタを優先的に割り当てる．
-        edge_list = list()
-        for reg in unit_mgr.reg_list :
-            for i, var in enumerate(cur_var_list) :
-                if reg.last_step > var.start :
-                    # life-time がオーバラップしている．
-                    continue
-                node = dfg.node_list[var.src_id]
-                if reg.has_samesrc(node) :
-                    w = 2
-                else :
-                    w = 1
-                edge_list.append( (reg.reg_id, i, w) )
-
-        print('matching begin: {}'.format(n2))
-        # 2部グラフの最大マッチングを求める．
-        match = bipartite_matching(len(unit_mgr.reg_list), n2, edge_list)
-        print('matching end. total {} matches'.format(len(match)))
-
-        bound_vars = set()
-        bound_regs = set()
-
-        # マッチング結果に基づいて割り当てを行う．
-        for reg_id, var_id in match :
-            reg = unit_mgr.reg_list[reg_id]
-            var = cur_var_list[var_id]
-            node = dfg.node_list[var.src_id]
-            reg.add_src(node)
-            bound_vars.add(var_id)
-            bound_regs.add(reg_id)
-
-        # 残りの変数は適当に割り当てる．
-        for i, var in enumerate(cur_var_list) :
-            if i in bound_vars :
-                continue
-            reg = unit_mgr.new_reg_unit()
-            node = dfg.node_list[var.src_id]
-            reg.add_src(node)
+        print()
+        print('cluster: {} | {} vars remain'.format(len(cur_var_list), len(var_list)))
+        reg_bind2(dfg, unit_mgr, cur_var_list)
 
 
 ### @brief セレクタの入力のバインディングを行う．
@@ -250,7 +316,7 @@ def bind(dfg) :
 
     # Load Unit は一意に割り当てられる．
     lu_map = dict()
-    for node in dfg.memnode_list :
+    for node in dfg.memsrcnode_list :
         key = node.block_id, node.offset
         if key in lu_map :
             lu = lu_map[key]
@@ -323,6 +389,12 @@ if __name__ == '__main__' :
     m_conf = (1, 2)
     s_conf = (1, 2, 3)
     s_conf = (2,)
+
+    omemory_size = len(op_list)
+    oblock_num = 8
+    obank_size = 1
+    omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
+
     for block_num, bank_size in mem_conf :
         print()
         print('Block Num: {}'.format(block_num))
@@ -333,7 +405,6 @@ if __name__ == '__main__' :
             print('Memory model #{}'.format(m_method))
             for op_limit in op1_conf :
                 for s_method in s_conf :
-                    dfg = scheduling(op_list, op_limit, mem_layout, s_method)
-                    op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
-                    print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
+                    dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
+                    print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
                     unit_mgr = bind(dfg)

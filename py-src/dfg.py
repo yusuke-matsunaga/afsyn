@@ -44,9 +44,14 @@ class Node :
     def fanin_list(self) :
         return self.__fanin_list
 
-    ### @brief メモリノードのとき True を返す．
+    ### @brief メモリソースノードのとき True を返す．
     @property
-    def is_mem(self) :
+    def is_memsrc(self) :
+        return False
+
+    ### @brief メモリシンクノードのとき True を返す．
+    @property
+    def is_memsink(self) :
         return False
 
     ### @brief OP1ノードのとき True を返す．
@@ -96,11 +101,6 @@ class MemNode(Node) :
         self.__bank_id = bank_id
         self.__offset = offset
 
-    ### @brief メモリノードのとき True を返す．
-    @property
-    def is_mem(self) :
-        return True
-
     ### @brief ブロック番号を返す．
     @property
     def block_id(self) :
@@ -117,6 +117,46 @@ class MemNode(Node) :
         return self.__offset
 
 
+### @brief メモリソースノード
+class MemSrcNode(MemNode) :
+
+    ### @brief 初期化
+    ### @param[in] id ID番号
+    ### @param[in] block_id ブロック番号
+    ### @param[in] bank_id バンク番号
+    ### @param[in] offset オフセット
+    def __init__(self, id, block_id, bank_id, offset) :
+        super().__init__(id, block_id, bank_id, offset)
+
+    ### @brief メモリソースノードのとき True を返す．
+    @property
+    def is_memsrc(self) :
+        return True
+
+
+### @brief メモリシンクノード
+class MemSinkNode(MemNode) :
+
+    ### @brief 初期化
+    ### @param[in] id ID番号
+    ### @param[in] block_id ブロック番号
+    ### @param[in] bank_id バンク番号
+    ### @param[in] offset オフセット
+    ### @param[in] src 入力ソース
+    def __init__(self, id, block_id, bank_id, offset, src) :
+        super().__init__(id, block_id, bank_id, offset)
+        self.__src = src
+
+    ### @brief メモリシンクノードのとき True を返す．
+    @property
+    def is_memsink(self) :
+        return True
+
+    ### @brief 入力ソースを返す．
+    @property
+    def src(self) :
+        return self.__src
+
 ### @brief 演算ノード
 class OpNode(Node) :
 
@@ -131,6 +171,7 @@ class OpNode(Node) :
         super().__init__(id, fanin_list)
         self.__level = level
         self.__weight_list = weight_list
+        self.__fanout = None
 
     ### @brief OP1ノードのとき True を返す．
     @property
@@ -164,6 +205,15 @@ class OpNode(Node) :
             for inode in self.fanin_list :
                 ans += inode.bias
         return ans
+
+    ### @brief ファンアウトをセットする．
+    def set_fanout(self, onode) :
+        self.__fanout = onode
+
+    ### @brief ファンアウトを返す．
+    @property
+    def fanout(self) :
+        return self.__fanout
 
 
 ### @brief 変数を表すクラス
@@ -208,6 +258,28 @@ class Var :
     def end(self) :
         return self.__end
 
+    ### @brief ライフタイムがオーバーラップしているか調べる．
+    ### @param[in] start ライフタイムの始点
+    ### @param[in] end ライフタイムの終点
+    ###
+    ### - オーバーラップしていた場合，共通な区間を返す．
+    ### - オーバーラップしていない場合，None を返す．
+    def check_overlap(self, start, end) :
+        start1 = self.start
+        end1 = self.end
+        # 順序を正規化する．
+        if start1 > start :
+            start1, start = start, start1
+            end1, end = end, end1
+
+        if start < end1 :
+            if end1 < end :
+                return start, end1
+            else :
+                return start, end
+        else :
+            return None
+
     ### @brief Unit 番号を返す．
     @property
     def unit_id(self) :
@@ -240,7 +312,8 @@ class DFG :
     ### 空のグラフを生成する．
     def __init__(self) :
         self.__node_list = []
-        self.__memnode_list = []
+        self.__memsrcnode_list = []
+        self.__memsinknode_list = []
         self.__op1node_list = []
         self.__op2node_list = []
         self.__total_step = 0
@@ -249,15 +322,27 @@ class DFG :
         self.__reg_num = 0
         self.__var_list = []
 
-    ### @brief メモリノードを作る．
+    ### @brief メモリソースノードを作る．
     ### @param[in] block_id ブロック番号
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def make_mem(self, block_id, bank_id, offset) :
+    def make_memsrc(self, block_id, bank_id, offset) :
         id = len(self.__node_list)
-        node = MemNode(id, block_id, bank_id, offset)
+        node = MemSrcNode(id, block_id, bank_id, offset)
         self.__node_list.append(node)
-        self.__memnode_list.append(node)
+        self.__memsrcnode_list.append(node)
+        return node
+
+    ### @brief メモリシンクノードを作る．
+    ### @param[in] block_id ブロック番号
+    ### @param[in] bank_id バンク番号
+    ### @param[in] offset オフセット
+    ### @param[in] src 入力ソース
+    def make_memsink(self, block_id, bank_id, offset, src) :
+        id = len(self.__node_list)
+        node = MemSinkNode(id, block_id, bank_id, offset, src)
+        self.__node_list.append(node)
+        self.__memsinknode_list.append(node)
         return node
 
     ### @brief 演算ノードを作る．
@@ -281,10 +366,15 @@ class DFG :
     def node_list(self) :
         return self.__node_list
 
-    ### @brief メモリノードのリストを返す．
+    ### @brief メモリソースノードのリストを返す．
     @property
-    def memnode_list(self) :
-        return self.__memnode_list
+    def memsrcnode_list(self) :
+        return self.__memsrcnode_list
+
+    ### @brief メモリシンクノードのリストを返す．
+    @property
+    def memsinknode_list(self) :
+        return self.__memsinknode_list
 
     ### @brief OP1ノードのリストを返す．
     @property
@@ -304,14 +394,25 @@ class DFG :
         return self.__total_step
 
     ### @brief OP1の個数を返す．
+    ###
+    ### 事前に eval_resource() を呼ぶ必要がある．
     @property
     def op1_num(self) :
         return self.__op1_num
 
     ### @brief OP1の個数を返す．
+    ###
+    ### 事前に eval_resource() を呼ぶ必要がある．
     @property
     def op2_num(self) :
         return self.__op2_num
+
+    ### @brief 必要なレジスタの個数を返す．
+    ###
+    ### 事前に eval_resource() を呼ぶ必要がある．
+    @property
+    def reg_num(self) :
+        return self.__reg_num
 
     ### @brief 変数のリストを得る．
     ###
@@ -325,10 +426,13 @@ class DFG :
     ###
     ### 各ノードのスケジュールが済んでいる必要がある．
     def eval_resource(self) :
+        assert len(self.__var_list) == 0
+
         # 総ステップ数の計算
         max_step = 0
         for node in self.node_list :
             cstep = node.cstep
+            assert cstep >= 0
             if max_step < cstep :
                 max_step = cstep
         self.__total_step = max_step + 1
@@ -353,7 +457,8 @@ class DFG :
         # 変数を作る．
         # MEM ノードに対しては複数のノードが一つの変数に対応する．
         memvar_map = dict()
-        for node in self.memnode_list :
+        opvar_map = dict()
+        for node in self.memsrcnode_list :
             step = node.cstep
             # 同じブロック，同じオフセット，同じcstepなら共有する．
             # （＝同じバンク)
@@ -371,6 +476,24 @@ class DFG :
                 key = (inode.block_id, inode.offset, inode.cstep)
                 var = memvar_map[key]
                 var.add_tgt_id(node.id, node.cstep)
+            ovar = Var(node.id, node.cstep)
+            opvar_map[node.id] = ovar
+            self.__var_list.append(ovar)
+            node.attach_var(ovar)
+
+        for node in self.op2node_list :
+            for inode in node.fanin_list :
+                var = opvar_map[inode.id]
+                var.add_tgt_id(node.id, node.cstep)
+            ovar = Var(node.id, node.cstep)
+            opvar_map[node.id] = ovar
+            self.__var_list.append(ovar)
+            node.attach_var(ovar)
+
+        for node in self.memsinknode_list :
+            inode = node.src
+            var = opvar_map[inode.id]
+            var.add_tgt_id(node.id, node.cstep)
 
         # OP1ノードは一対一
         for node in self.op1node_list :
@@ -387,42 +510,43 @@ class DFG :
                 var.add_tgt_id(tgt_id, step)
 
         # レジスタのリソース量の計算
-        reg_map_list = [ set() for i in range(self.total_step) ]
-        for node in self.node_list :
-            ostep = node.cstep
-            for inode in node.fanin_list :
-                istep = inode.cstep
-                if inode.is_mem :
-                    for step in range(istep + 1, ostep) :
-                        reg_map_list[step].add( (inode.block_id, inode.bank_id, inode.offset) )
-                else :
-                    for step in range(istep, ostep) :
-                        reg_map_list[step].add( inode.unit_id )
-        reg_num = 0
+        svar_list = sorted(self.__var_list)
+        max_n = 0
         for step in range(self.total_step) :
-            n = len(reg_map_list[step])
-            if reg_num < n :
-                reg_num = n
-
-        return self.__op1_num, self.__op2_num, reg_num, self.__total_step
+            n = 0
+            for var in svar_list :
+                if var.start +1 == var.end :
+                    inode = self.__node_list[var.src_id]
+                    if inode.is_memsrc or inode.is_op2 :
+                        continue
+                if var.end <= step :
+                    continue
+                elif var.start > step :
+                    break
+                # var.start <= step < var.end
+                n += 1
+            if max_n < n :
+                max_n = n
+        self.__reg_num = max_n
 
 
 ### @brief DFG を作る
 ### @param[in] op_list 演算リスト
-### @param[in] mem_layout メモリレイアウト
+### @param[in] imem_layout 入力メモリレイアウト
+### @param[in] omem_layout 出力メモリレイアウト
 ### @return DFG を返す．
-def make_graph(op_list, mem_layout) :
+def make_graph(op_list, imem_layout, omem_layout) :
     dfg = DFG()
-    for op in op_list :
+    for o_id, op in enumerate(op_list) :
         l1_fanin_list = []
         l1_fanin_num = 0
         l1_weight_list = []
         l2_fanin_list = []
         for i_id, w in op.fanin_list :
-            block_id = mem_layout.block_id(i_id)
-            bank_id = mem_layout.bank_id(i_id)
-            offset = mem_layout.offset(i_id)
-            mem_node = dfg.make_mem(block_id, bank_id, offset)
+            block_id = imem_layout.block_id(i_id)
+            bank_id = imem_layout.bank_id(i_id)
+            offset = imem_layout.offset(i_id)
+            mem_node = dfg.make_memsrc(block_id, bank_id, offset)
             if w == 0.25 :
                 n = 2
             else :
@@ -441,6 +565,13 @@ def make_graph(op_list, mem_layout) :
             op_node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
             l2_fanin_list.append(op_node)
         node = dfg.make_op(l2_fanin_list, 2)
+        for inode in l2_fanin_list :
+            inode.set_fanout(node)
+        block_id = omem_layout.block_id(o_id)
+        bank_id = omem_layout.bank_id(o_id)
+        offset = omem_layout.offset(o_id)
+        onode = dfg.make_memsink(block_id, bank_id, offset, node)
+        node.set_fanout(onode)
 
     return dfg
 
@@ -450,7 +581,7 @@ if __name__ == '__main__' :
     # Op.dump() ファイルを読み込んで DFG を作る．
     import sys
     import os
-    from op import read_op
+    from op import Op
     from mem_layout import MemLayout
 
     if len(sys.argv) != 2 :
@@ -460,7 +591,7 @@ if __name__ == '__main__' :
     filename = sys.argv[1]
     op_list = None
     with open(filename, 'rt') as fin :
-        op_list = read_op(fin)
+        op_list = Op.read(fin)
 
     if op_list is None :
         print('read failed.')
@@ -471,8 +602,13 @@ if __name__ == '__main__' :
     bank_size = 16
     print('Block num: {}'.format(block_num))
     print('Bank Size: {}'.format(bank_size))
-    mem_layout = MemLayout(memory_size, block_num, bank_size)
-    dfg = make_graph(op_list, mem_layout)
+    imem_layout = MemLayout(memory_size, block_num, bank_size)
+    omemory_size = len(op_list)
+    oblock_num = 8
+    obank_size = 16
+    omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
+    dfg = make_graph(op_list, imem_layout, omem_layout)
     print('# of nodes: {}'.format(len(dfg.node_list)))
-    print('# of OP1 nodes: {}'.format(len(dfg.op1_list)))
-    print('# of OP2 nodes: {}'.format(len(dfg.op2_list)))
+    print('# of OP1 nodes: {}'.format(len(dfg.op1node_list)))
+    print('# of OP2 nodes: {}'.format(len(dfg.op2node_list)))
+    print('# of MemSink:   {}'.format(len(dfg.memsinknode_list)))

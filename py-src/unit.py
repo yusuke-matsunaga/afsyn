@@ -105,10 +105,12 @@ class LoadUnit(Unit) :
         return True
 
     ### @brief ブロック番号を返す．
+    @property
     def block_id(self) :
         return self.__block_id
 
     ### @brief オフセットを返す．
+    @property
     def offset(self) :
         return self.__offset
 
@@ -130,10 +132,12 @@ class StoreUnit(Unit) :
         return True
 
     ### @brief ブロック番号を返す．
+    @property
     def block_id(self) :
         return self.__block_id
 
     ### @brief オフセットを返す．
+    @property
     def offset(self) :
         return self.__offset
 
@@ -336,3 +340,56 @@ class UnitMgr :
         self.__unit_list.append(reg)
         self.__reg_list.append(reg)
         return reg
+
+    ### @brief 動作シミュレーションを行う．
+    ### @param[in] dfg 対象のグラフ
+    ### @param[in] ivals 入力値
+    ### @return 出力値を納めた辞書を返す．
+    def simulate(self, dfg, ivals) :
+        for step in range(dfg.total_step) :
+            for unit in self.__unit_list :
+                pass
+
+    ### @brief 内容を出力する．
+    def print(self, fout) :
+        # Load Unit の内容を出力する．
+        print('Load Unit', file = fout)
+        for lu in self.load_unit_list :
+            print('Unit#{}'.format(lu.id), file = fout)
+            print('  memory block: {}'.format(lu.block_id), file = fout)
+
+        # Op1 Unit の内容を出力する．
+        print('Op1 Unit', file = fout)
+        for op1 in self.op1_list :
+            print('Unit#{}'.format(op1.id), file = fout)
+            for i in range(op1.input_num) :
+                print('  Input#{}'.format(i), file = fout)
+                mux_spec = op1.mux_spec(i)
+                for src in mux_spec.src_list :
+                    print('    {} @ ('.format(src), end = '', file = fout)
+                    cond_list = mux_spec.src_cond(src)
+                    for cond in cond_list :
+                        print(' {}'.format(cond), end = '', file = fout)
+                    print(')', file = fout)
+            print(file = fout)
+
+        # Op2 Unit の内容を出力する．
+        print('Op2 Unit', file = fout)
+        for op2 in self.op2_list :
+            print('Unit#{}'.format(op2.id), file = fout)
+            for i in range(op2.input_num) :
+                print('  Input#{}'.format(i), file = fout)
+                mux_spec = op2.mux_spec(i)
+                for src in mux_spec.src_list :
+                    print('    {} @ ('.format(src), end = '', file = fout)
+                    cond_list = mux_spec.src_cond(src)
+                    for cond in cond_list :
+                        print(' {}'.format(cond), end = '', file = fout)
+                    print(')', file = fout)
+            print(file = fout)
+
+        # Store Unit の内容を出力する．
+        print('Store Unit', file = fout)
+        for su in self.store_unit_list :
+            print('Unit#{}'.format(su.id), file = fout)
+            print('  memory block: {}'.format(su.block_id), file = fout)

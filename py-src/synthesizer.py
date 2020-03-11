@@ -71,7 +71,7 @@ def print_op2_spec(op2_list) :
 if __name__ == '__main__' :
     import sys
     import os
-    from op import Op, read_op
+    from op import Op
     from dfg import make_graph
     from mem_layout import MemLayout
 
@@ -82,7 +82,7 @@ if __name__ == '__main__' :
     filename = sys.argv[1]
     op_list = None
     with open(filename, 'rt') as fin :
-        op_list = read_op(fin)
+        op_list = Op.read(fin)
 
     if op_list is None :
         print('read failed.')
@@ -98,11 +98,17 @@ if __name__ == '__main__' :
     #mem_conf = ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32))
     mem_conf = ((24, 32), )
     #op1_conf = (16, 32, 64, 128)
-    op1_conf = (128, )
+    op1_conf = (32, )
     #m_conf = (1, 2)
     m_conf = (2,)
     #s_conf = (1, 2, 3)
     s_conf = (2,)
+
+    omemory_size = len(op_list)
+    oblock_num = 8
+    obank_size = 1
+    omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
+
     for block_num, bank_size in mem_conf :
         print()
         print('Block Num: {}'.format(block_num))
@@ -113,11 +119,8 @@ if __name__ == '__main__' :
             print('Memory model #{}'.format(m_method))
             for op_limit in op1_conf :
                 for s_method in s_conf :
-                    dfg = scheduling(op_list, op_limit, mem_layout, s_method)
+                    dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
                     op1_num, op2_num, reg_num, total_step = dfg.eval_resource()
                     print('{}, {}, {}: {} steps'.format(op1_num, op2_num, reg_num, total_step))
-                    reg_list, op1_list, op2_list = bind(dfg)
-
-                    print_reg_spec(reg_list)
-                    print_op1_spec(op1_list)
-                    print_op2_spec(op2_list)
+                    unit_mgr = bind(dfg)
+                    unit_mgr.print(sys.stdout)
