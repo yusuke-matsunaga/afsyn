@@ -393,6 +393,9 @@ class DFG :
                 if inode.is_mem :
                     for step in range(istep + 1, ostep) :
                         reg_map_list[step].add( (inode.block_id, inode.bank_id, inode.offset) )
+                else :
+                    for step in range(istep, ostep) :
+                        reg_map_list[step].add( inode.op_id )
         reg_num = 0
         for step in range(self.total_step) :
             n = len(reg_map_list[step])

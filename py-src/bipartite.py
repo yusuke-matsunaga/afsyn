@@ -65,7 +65,7 @@ class BiNode :
 
     ### @brief ヒープ関係の変数を初期化する．
     def init_heap(self) :
-        self.__value = 0
+        self.__value = -1
         self.__alt_edge = None
         self.__index = -1
 
@@ -148,6 +148,8 @@ class Heap :
     ### @param[in] alt_edge 代わりの枝
     ### @param[in] value 価値
     def put(self, node, alt_edge, value) :
+        if node.value >= value :
+            return
         pos = node.index
         if pos == -1 :
             node.update(alt_edge, value)
@@ -156,9 +158,6 @@ class Heap :
             self.__heap[pos] = node
             node.set_index(pos)
         else :
-            if node.value >= value :
-                # 更新しない
-                return
             node.update(alt_edge, value)
         self.move_up(pos)
 
@@ -199,7 +198,7 @@ class Heap :
                 # 右の子供はいない．
                 if l_node.value > node.value :
                     self.locate(pos, l_node)
-                    self.locate(l_pos, pos)
+                    self.locate(l_pos, node)
                 break
             else :
                 r_node = self.__heap[r_pos]
@@ -260,7 +259,8 @@ def find_path(l_nodes, r_nodes, edge_list) :
     # queue から値を大きいノードを取り出して BFS を行う．
     max_value = 0
     max_path = None
-    while queue.num > 0 :
+    not_found = True
+    while not_found and queue.num > 0 :
         node1 = queue.get()
         for edge1 in node1.edge_list :
             if edge1.is_selected :
@@ -273,6 +273,7 @@ def find_path(l_nodes, r_nodes, edge_list) :
                     # 増加路になっていれば終わる．
                     max_value = value
                     max_path = make_path(edge1, node1)
+                    not_found = False
             else :
                 edge2 = node2.selected_edge
                 node3 = edge2.node1
@@ -308,6 +309,20 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         l_node.add_edge(edge)
         r_node.add_edge(edge)
         edge_list.append(edge)
+
+    print('#1: {}, #2: {}, #E: {}'.format(len(l_nodes), len(r_nodes), len(edge_list)))
+
+    # 初期マッチングを求める．
+    ne0 = 0
+    v0 = 0
+    for edge in sorted(edge_list, key = lambda edge: edge.weight, reverse = True) :
+        if edge.node1.is_selected or edge.node2.is_selected :
+            continue
+        edge.select()
+        ne0 += 1
+        v0 += edge.weight
+
+    print('initial weight = {}, #E = {}'.format(v0, ne0))
 
     # 増加路を見つける．
     while True :

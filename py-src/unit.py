@@ -45,6 +45,11 @@ class Unit :
         self.__input_num = input_num
         self.__mux_list = [ MuxSpec() for i in range(input_num) ]
 
+    ### @brief ID番号を返す．
+    @property
+    def id(self) :
+        return self.__id
+
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
     ### @param[in] src_id ソースのレジスタ番号
@@ -205,6 +210,65 @@ class RegUnit(Unit) :
     ### @param[in] id レジスタ番号
     def __init__(self, id) :
         super().__init__(id, 1)
+        self.__var_list = list()
+        self.__last_step = 0
+        self.__memsrc_map = dict()
+        self.__opsrc_map = dict()
+
+    ### @brief 変数を割り当てる．
+    def bind_var(self, var) :
+        self.__var_list.append(var)
+        if self.__last_step < var.end :
+            self.__last_step = var.end
+
+    ### @brief ソースの情報を追加する．
+    def add_src(self, node) :
+        var = node.var
+        cstep = var.start
+        if node.is_mem :
+            key = node.block_id, node.offset
+            if key not in self.__memsrc_map :
+                self.__memsrc_map[key] = list()
+            self.__memsrc_map[key].append( (cstep, node.bank_id) )
+        else :
+            op_id = node.op_id
+            if op_id not in self.__opsrc_map :
+                self.__opsrc_map[op_id] = list()
+            self.__opsrc_map[op_id].append(cstep)
+
+    ### @brief 割り当てられている変数のリストを返す．
+    @property
+    def var_list(self) :
+        return self.__var_list
+
+    ### @brief 現在の使用されている最後のステップを返す．
+    @property
+    def last_step(self) :
+        return self.__last_step
+
+    ### @brief 同じソースがあったら True を返す．
+    def has_samesrc(self, node) :
+        if node.is_mem :
+            key = node.block_id, node.offset
+            return key in self.__memsrc_map
+        else :
+            return node.op_id in self.__opsrc_map
+
+    ### @brief メモリブロックソースの辞書を返す．
+    ###
+    ### (mem_block, mem_offset) をキーとして，そのブロックを使う
+    ### コントロールステップとバンク番号のペアのリストを返す．
+    @property
+    def memsrc_map(self, block, offset) :
+        return self.__memsrc_map
+
+    ### @brief 演算器ブロックソースの辞書を返す．
+    ###
+    ### 演算器番号をキーとしてそのブロックを使う
+    ### コントロールステップのリストを格納する．
+    @property
+    def opsrc_map(self) :
+        return self.__opsrc_map
 
     ### @brief レジスタのときに True を返す．
     def is_reg_unit(self) :

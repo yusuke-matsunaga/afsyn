@@ -15,121 +15,6 @@ from unit import LoadUnit, StoreUnit, Op1Unit, Op2Unit, RegUnit
 debug = False
 
 
-### @brief OP1の仕様を表すクラス
-class Op1Spec :
-
-    ### @brief 初期化
-    ### @param[in] input_num 入力数
-    def __init__(self, input_num) :
-        self.__input_num = input_num
-        self.__mux_spec = [ MuxSpec() for i in range(input_num) ]
-        self.__inv_cond_list = [ list() for i in range(input_num) ]
-
-    ### @brief 入力数を返す．
-    @property
-    def input_num(self) :
-        return self.__input_num
-
-    ### @brief 一つのcstepに関する入力を設定する．
-    ### @param[in] i 入力番号
-    ### @param[in] cstep コントロールステップ
-    ### @param[in] src_id ソースのレジスタ番号
-    ### @param[in] inv 反転する時に True にするフラグ
-    def add_src(self, i, cstep, src_id, inv) :
-        self.__mux_spec[i].add_src(cstep, src_id)
-        if inv :
-            self.__inv_cond_list[i].append(cstep)
-
-    ### @brief 入力のセレクタ情報を返す．
-    ### @param[in] i 入力番号
-    def mux_spec(self, i) :
-        return self.__mux_spec[i]
-
-    ### @brief 入力の反転条件(コントロールステップ)を返す．
-    def inv_cond(self, i) :
-        return self.__inv_cond_list[i]
-
-
-### @brief OP2の仕様を表すクラス
-class Op2Spec :
-
-    ### @brief 初期化
-    ### @param[in] input_num 入力数
-    def __init__(self, input_num) :
-        self.__input_num = input_num
-        self.__mux_spec = [ MuxSpec() for i in range(input_num) ]
-        self.__bias_map = dict()
-
-    ### @brief 入力数を返す．
-    @property
-    def input_num(self) :
-        return self.__input_num
-
-    ### @brief 一つのcstepに関する入力を設定する．
-    ### @param[in] i 入力番号
-    ### @param[in] cstep コントロールステップ
-    ### @param[in] src_id ソースのレジスタ番号
-    def add_src(self, i, cstep, src_id) :
-        self.__mux_spec[i].add_src(cstep, src_id)
-
-    ### @brief cstep ごとの bias 値を設定する．
-    def add_bias(self, cstep, bias) :
-        self.__bias_map[cstep] = bias
-
-    ### @brief 入力のセレクタ情報を返す．
-    ### @param[in] i 入力番号
-    def mux_spec(self, i) :
-        return self.__mux_spec[i]
-
-    ### @brief bias値の辞書を返す．
-    @property
-    def bias_map(self) :
-        return self.__bias_map
-
-
-### @brief レジスタの仕様を表すクラス
-class RegSpec :
-
-    ### @brief 初期化
-    ### @param[in] id レジスタ番号
-    def __init__(self, id) :
-        self.__id = id
-        self.__memsrc_map = dict()
-        self.__opsrc_map = dict()
-
-    ### @brief レジスタ番号を返す．
-    @property
-    def id(self) :
-        return self.__id
-
-    ### @brief ソースの情報を追加する(メモリブロック)．
-    def add_memsrc(self, cstep, mem_block, mem_bank, mem_offset) :
-        key = mem_block, mem_offset
-        if key not in self.__memsrc_map :
-            self.__memsrc_map[key] = list()
-        self.__memsrc_map[key].append( (cstep, mem_bank) )
-
-    ### @brief ソースの情報を追加する(演算器)
-    def add_opsrc(self, cstep, op_id) :
-        if op_id not in self.__opsrc_map :
-            self.__opsrc_map[op_id] = list()
-        self.__opsrc_map[op_id].append(cstep)
-
-    ### @brief メモリブロックソースの辞書を返す．
-    ###
-    ### (mem_block, mem_offset) をキーとして，そのブロックを使う
-    ### コントロールステップとオフセットのペアのリストを格納する．
-    def memsrc_map(self) :
-        return self.__memsrc_map
-
-    ### @brief 演算器ブロックソースの辞書を返す．
-    ###
-    ### 演算器番号をキーとしてそのブロックを使う
-    ### コントロールステップのリストを格納する．
-    def opsrc_map(self) :
-        return self.__opsrc_map
-
-
 ### @brief life-time がオーバーラップしているか調べる．
 def is_overlap(start1, end1, start2, end2) :
     # 順序を正規化する．
@@ -148,78 +33,72 @@ def is_overlap(start1, end1, start2, end2) :
 
 ### @brief レジスタ割り当てを行う．
 def bind_register(dfg) :
-    # 全変数のリスト
-    var_list = list(dfg.var_list)
-    # start, end でソートする．
+    # 全変数のリストを (start, end) でソートしたもの
+    # ただし MemNode が直接 OpNode につながっている場合
+    # にはレジスタを使わない．
+    var_list = list()
+    for var in dfg.var_list :
+        if var.start + 1 == var.end and dfg.node_list[var.src_id].is_mem :
+            # メモリブロックから直接演算器につながっている．
+            continue
+        var_list.append(var)
     var_list.sort()
 
-    # 現在のレジスタ数
-    reg_num = 0
-
-    # 各レジスタに割り当てられた変数のリストを持つ配列
-    # サイズは reg_num
-    varmap_list = list()
-
-    # 各レジスタに割り当てられた変数のソースとなっている演算器番号のセットのリスト
-    opsrc_list = list()
-    # 各レジスタに割り当てられた変数のソースとなっているメモリブロックのセットのリスト
-    memsrc_list = list()
+    # レジスタ情報のリスト
+    reg_list = list()
 
     # すべての変数に割り当てを行うまでループを繰り返す．
     while len(var_list) > 0 :
+        print('clustering begin: {} vars remain'.format(len(var_list)))
         # 最初の変数と line-time が重複している変数を取り出す．
         seed_var = var_list[0]
         seed_start = seed_var.start
         seed_end = seed_var.end
         cur_var_list = list()
-        new_var_list = list()
+        rest_var_list = list()
         for var in var_list :
             res = is_overlap(seed_start, seed_end, var.start, var.end)
             if res is not None :
                 seed_start, seed_end = res
                 cur_var_list.append(var)
             else :
-                new_var_list.append(var)
-        var_list = new_var_list
+                rest_var_list.append(var)
+        var_list = rest_var_list
 
-        # cur_var_list の変数に関連付けられたノードのリスト
-        cur_node_list = [ dfg.node_list[var.src_id] for var in cur_var_list ]
-        n2 = len(cur_node_list)
+        n2 = len(cur_var_list)
 
         # cur_var_list に含まれる変数にレジスタ割り当てを行う．
         # 各変数に関連付けられたノードとバインドしている演算器
         # が共通のレジスタを優先的に割り当てる．
         edge_list = list()
-        for reg_id in range(reg_num) :
-            opsrc = opsrc_list[reg_id]
-            memsrc = memsrc_list[reg_id]
-            for i, node in enumerate(cur_node_list) :
-                compatible = False
-                if node.is_mem :
-                    if (node.block_id, node.offset) in memsrc :
-                        compatible = True
+        for reg in reg_list :
+            for i, var in enumerate(cur_var_list) :
+                if reg.last_step > var.start :
+                    # life-time がオーバラップしている．
+                    continue
+                node = dfg.node_list[var.src_id]
+                if reg.has_samesrc(node) :
+                    w = 2
                 else :
-                    if node.op_id in opsrc :
-                        compatible = True
-                if compatible :
-                    edge_list.append( (reg_id, i) )
+                    w = 1
+                edge_list.append( (reg.id, i, w) )
 
+        print('matching begin: {}'.format(n2))
         # 2部グラフの最大マッチングを求める．
-        match = bipartite_matching(reg_num, n2, edge_list)
+        match = bipartite_matching(len(reg_list), n2, edge_list)
+        print('matching end. total {} matches'.format(len(match)))
 
         bound_vars = set()
         bound_regs = set()
 
         # マッチング結果に基づいて割り当てを行う．
         for reg_id, var_id in match :
+            reg = reg_list[reg_id]
             var = cur_var_list[var_id]
             var.bind(reg_id)
-            varmap_list[reg_id].append(var)
+            reg.bind_var(var)
             node = dfg.node_list[var.src_id]
-            if node.is_mem :
-                memsrc_list[reg_id].add( (node.block_id, node.offset) )
-            else :
-                opsrc_list[reg_id].add(node.op_id)
+            reg.add_src(node)
             bound_vars.add(var_id)
             bound_regs.add(reg_id)
 
@@ -227,51 +106,14 @@ def bind_register(dfg) :
         for i, var in enumerate(cur_var_list) :
             if i in bound_vars :
                 continue
-            # 未割り当てのレジスタを見つける．
-            for reg_id in range(reg_num) :
-                if reg_id in bound_regs :
-                    continue
-                # 空きを見つけた．
-                var.bind(reg_id)
-                varmap_list[reg_id].append(var)
-                node = dfg.node_list[var.src_id]
-                if node.is_mem :
-                    memsrc_list[reg_id].add( (node.block_id, node.offset) )
-                else :
-                    opsrc_list[reg_id].add(node.op_id)
-                bound_regs.add(reg_id)
-                break
-            else :
-                # 未割り当てレジスタを見つけられなかった．
-                reg_id = reg_num
-                reg_num += 1
-                varmap_list.append(list())
-                memsrc_list.append(set())
-                opsrc_list.append(set())
-                var.bind(reg_id)
-                varmap_list[reg_id].append(var)
-                node = dfg.node_list[var.src_id]
-                if node.is_mem :
-                    memsrc_list[reg_id].add( (node.block_id, node.offset) )
-                else :
-                    opsrc_list[reg_id].add(node.op_id)
-                bound_regs.add(reg_id)
+            reg = RegSpec(len(reg_list))
+            reg_list.append(reg)
+            var.bind(reg.id)
+            reg.bind_var(var)
+            node = dfg.node_list[var.src_id]
+            reg.add_src(node)
 
-    # varmap_list から RegSpec の情報を作る．
-    reg_spec_list = list()
-    for reg_id, varmap in enumerate(varmap_list) :
-        reg_spec = RegSpec(reg_id)
-        for var in varmap :
-            src_id = var.src_id
-            cstep = var.start
-            node = dfg.node_list[src_id]
-            if node.is_mem :
-                reg_spec.add_memsrc(cstep, node.block_id, node.bank_id, node.offset)
-            else :
-                reg_spec.add_opsrc(cstep, node.op_id)
-        reg_spec_list.append(reg_spec)
-
-    return reg_spec_list
+    return reg_list
 
 
 ### @brief セレクタの入力のバインディングを行う．
@@ -356,12 +198,12 @@ def alloc_selecter(dfg) :
         # 入力のバインディングを行う．
         sel_src_list = input_binding(src_list_map, 16)
         n = len(sel_src_list)
-        op1_spec = Op1Spec(n)
+        op1_unit = Op1Unit(uid, n)
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src_id, inv) in sel_src.items() :
-                op1_spec.add_src(i, cstep, src_id, inv)
+                op1_unit.add_src(i, src_id, cstep, inv)
 
-        op1_list.append(op1_spec)
+        op1_list.append(op1_unit)
 
         if debug :
             print('OP1#{}: # of inputs: {}'.format(op_id, n))
@@ -397,14 +239,14 @@ def alloc_selecter(dfg) :
         # 入力のバインディングを行う．
         sel_src_list = input_binding(src_list_map, 15)
         n = len(sel_src_list)
-        op2_spec = Op2Spec(n)
+        op2_unit = Op2Unit(uid, n)
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src_id, inv) in sel_src.items() :
-                op2_spec.add_src(i, cstep, src_id)
+                op2_unit.add_src(i, src_id, cstep)
         for cstep, bias in bias_map_dict[op_id].items() :
-            op2_spec.add_bias(cstep, bias)
+            op2_unit.add_bias(cstep, bias)
 
-        op2_list.append(op2_spec)
+        op2_list.append(op2_unit)
 
         if debug :
             print('OP2#{}: # of inputs: {}'.format(op_id, n))
@@ -424,22 +266,30 @@ def bind(dfg) :
     # 演算器はとりあえずナイーブに割り当てる．
     op1_map = dict()
     op1_count = [ 0 for i in range(dfg.total_step) ]
+    op1_num = 0
     for node in dfg.op1node_list :
         step = node.cstep
         op_id = op1_count[step]
         node.bind(op_id)
         op1_count[step] += 1
+        if op1_num < op_id :
+            op1_num = op_id
+    op1_num += 1
 
     op2_map = dict()
     op2_count = [ 0 for i in range(dfg.total_step) ]
+    op2_num = 0
     for node in dfg.op2node_list :
         step = node.cstep
         op_id = op2_count[step]
-        node.bind(op_id)
+        node.bind(op_id + op1_num)
         op2_count[step] += 1
+        if op2_num < op_id :
+            op2_num = op_id
+    op2_num += 1
 
     # レジスタ割り当てを行う．
-    reg_spec_list = bind_register(dfg)
+    reg_list = bind_register(dfg)
 
     # セレクタの生成を行う．
     op1_list, op2_list = alloc_selecter(dfg)
@@ -477,10 +327,10 @@ if __name__ == '__main__' :
     mem_conf = ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32))
     mem_conf = ((24, 32), )
     op1_conf = (16, 32, 64, 128)
-    op1_conf = (128, )
+    op1_conf = (32, )
     m_conf = (1, 2)
     s_conf = (1, 2, 3)
-    s_conf = (2,)
+    s_conf = (3,)
     for block_num, bank_size in mem_conf :
         print()
         print('Block Num: {}'.format(block_num))
