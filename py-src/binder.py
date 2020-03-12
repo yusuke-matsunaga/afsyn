@@ -88,6 +88,9 @@ def reg_bind2(dfg, unit_mgr, var_list) :
         var = var_list[var_id]
         node = dfg.node_list[var.src_id]
         reg.add_src(node)
+        if node.is_op2 :
+            print('src is Op2#{}'.format(node.id))
+            print(' {} - {}'.format(var.start, var.end))
         bound_vars.add(var_id)
         bound_regs.add(reg_id)
 
@@ -276,8 +279,9 @@ def alloc_selecter(dfg, unit_mgr) :
     for node in dfg.op2node_list :
         src_list = list()
         for inode in node.fanin_list :
-            op1_id = inode.unit_id
-            src_list.append( (op1_id, 1) )
+            var = inode.var
+            unit_id = var.unit_id
+            src_list.append( (unit_id, 1) )
         op_id = node.unit_id
         if op_id not in src_list_map_dict :
             src_list_map_dict[op_id] = dict()
@@ -324,16 +328,7 @@ def bind(dfg) :
             lu = unit_mgr.new_load_unit(node.block_id, node.offset)
             lu_map[key] = lu
         node.bind(lu.id)
-
-    # Store Unit も一意に割り当てられる．
-    su_map = dict()
-    for node in dfg.memsinknode_list :
-        if node.block_id in su_map :
-            su = su_map[node.block_id]
-        else :
-            su = unit_mgr.new_store_unit(node.block_id)
-            su_map[node.block_id] = su
-        node.bind(su.id)
+        lu.add_cond(node.cstep, node.bank_id)
 
     # 演算器はとりあえずナイーブに割り当てる．
     op1_count = [ 0 for i in range(dfg.total_step) ]
@@ -361,6 +356,19 @@ def bind(dfg) :
 
     # レジスタ割り当てを行う．
     bind_register(dfg, unit_mgr)
+
+    # Store Unit も一意に割り当てられる．
+    su_map = dict()
+    for node in dfg.memsinknode_list :
+        if node.block_id in su_map :
+            su = su_map[node.block_id]
+        else :
+            su = unit_mgr.new_store_unit(node.block_id)
+            su_map[node.block_id] = su
+        node.bind(su.id)
+        inode = node.src
+        var = inode.var
+        su.add_src(var.unit_id, node.cstep, node.bank_id)
 
     # セレクタの生成を行う．
     alloc_selecter(dfg, unit_mgr)

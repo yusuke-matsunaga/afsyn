@@ -54,7 +54,7 @@ class Unit :
     ### @param[in] i 入力番号
     ### @param[in] src_id ソースのレジスタ番号
     ### @param[in] cstep コントロールステップ
-    def add_src(self, i, src_id, cstep) :
+    def _add_src(self, i, src_id, cstep) :
         self.__mux_list[i].add_src(src_id, cstep)
 
     ### @brief 入力数を返す．
@@ -88,17 +88,51 @@ class Unit :
         return False
 
 
+### @brief メモリを表すクラス
+class MemoryBlock :
+
+    ### @brief 初期化
+    ### @param[in] block_id ブロック番号
+    def __init__(self, block_id) :
+        self.__block_id = block_id
+        self.__cond_dict = dict()
+
+    ### @brief ブロック番号を返す．
+    @property
+    def block_id(self) :
+        return self.__block_id
+
+    ### @brief バンク選択条件を追加する．
+    def add_cond(self, cstep, bank_id) :
+        if cstep in self.__cond_dict :
+            assert self.__cond_dict[cstep] == bank_id
+        else :
+            self.__cond_dict[cstep] = bank_id
+
+    ### @brief バンク選択条件の辞書を返す．
+    ###
+    ### cstep をキーとしてそのときに選択されて
+    ### いるバンク番号を格納している．
+    @property
+    def cond_dict(self) :
+        return self.__cond_dict
+
+
 ### @brief ロードユニット
 class LoadUnit(Unit) :
 
     ### @brief 初期化
     ### @param[in] id 演算器番号
-    ### @param[in] block_id ブロック番号
+    ### @param[in] mem_block ブロック
     ### @param[in] offset オフセット
-    def __init__(self, id, block_id, offset) :
+    def __init__(self, id, mem_block, offset) :
         super().__init__(id, 0)
-        self.__block_id = block_id
+        self.__block = mem_block
         self.__offset = offset
+
+    ### @brief ロード条件を追加する．
+    def add_cond(self, cstep, bank_id) :
+        self.__block.add_cond(cstep, bank_id)
 
     ### @brief ロードユニットのときに True を返す．
     def is_load_unit(self) :
@@ -107,12 +141,20 @@ class LoadUnit(Unit) :
     ### @brief ブロック番号を返す．
     @property
     def block_id(self) :
-        return self.__block_id
+        return self.__block.block_id
 
     ### @brief オフセットを返す．
     @property
     def offset(self) :
         return self.__offset
+
+    ### @brief バンク選択条件の辞書を返す．
+    ###
+    ### cstep をキーとしてそのときに選択されて
+    ### いるバンク番号を格納している．
+    @property
+    def cond_dict(self) :
+        return self.__block.cond_dict
 
 
 ### @brief ストアユニット
@@ -120,10 +162,15 @@ class StoreUnit(Unit) :
 
     ### @brief 初期化
     ### @param[in] id 演算器番号
-    ### @param[in] block_id ブロック番号
-    def __init__(self, id, block_id) :
+    ### @param[in] mem_block ブロック
+    def __init__(self, id, mem_block) :
         super().__init__(id, 1)
-        self.__block_id = block_id
+        self.__block = mem_block
+
+    ### @brief ストア条件を追加する．
+    def add_src(self, src_id, cstep, bank_id) :
+        super()._add_src(0, src_id, cstep)
+        self.__block.add_cond(cstep, bank_id)
 
     ### @brief ストアユニットのときに True を返す．
     def is_store_unit(self) :
@@ -132,17 +179,27 @@ class StoreUnit(Unit) :
     ### @brief ブロック番号を返す．
     @property
     def block_id(self) :
-        return self.__block_id
+        return self.__block.block_id
+
+    ### @brief バンク選択条件の辞書を返す．
+    ###
+    ### cstep をキーとしてそのときに選択されて
+    ### いるバンク番号を格納している．
+    @property
+    def cond_dict(self) :
+        return self.__block.cond_dict
 
 
 ### @brief OP1ユニット
 class Op1Unit(Unit) :
 
     ### @brief 初期化
-    ### @param[in] id 演算器番号
+    ### @param[in] id ユニット番号
+    ### @param[in] op_id 演算器番号
     ### @param[in] input_num 入力番号
-    def __init__(self, id, input_num) :
+    def __init__(self, id, op_id, input_num) :
         super().__init__(id, input_num)
+        self.__op_id = op_id
         self.__inv_cond_list = [ list() for i in range(input_num) ]
 
     ### @brief 一つのcstepに関する入力を設定する．
@@ -151,13 +208,18 @@ class Op1Unit(Unit) :
     ### @param[in] src_id ソースのレジスタ番号
     ### @param[in] inv 反転する時に True にするフラグ
     def add_src(self, i, src_id, cstep, inv) :
-        super().add_src(i, src_id, cstep)
+        super()._add_src(i, src_id, cstep)
         if inv :
             self.__inv_cond_list[i].append(cstep)
 
     ### @brief OP1ユニットのときに True を返す．
     def is_op1_unit(self) :
         return True
+
+    ### @brief 演算器番号を返す．
+    @property
+    def op_id(self) :
+        return self.__op_id
 
     ### @brief 入力の反転条件(コントロールステップ)を返す．
     def inv_cond(self, i) :
@@ -168,11 +230,20 @@ class Op1Unit(Unit) :
 class Op2Unit(Unit) :
 
     ### @brief 初期化
-    ### @param[in] id 演算器番号
+    ### @param[in] id ユニット番号
+    ### @param[in] op_id 演算器番号
     ### @param[in] input_num 入力番号
-    def __init__(self, id, input_num) :
+    def __init__(self, id, op_id, input_num) :
         super().__init__(id, input_num)
+        self.__op_id = op_id
         self.__bias_map = dict()
+
+    ### @brief 一つのcstepに関する入力を設定する．
+    ### @param[in] i 入力番号
+    ### @param[in] cstep コントロールステップ
+    ### @param[in] src_id ソースのレジスタ番号
+    def add_src(self, i, src_id, cstep) :
+        super()._add_src(i, src_id, cstep)
 
     ### @brief cstep ごとの bias 値を設定する．
     def add_bias(self, bias, cstep) :
@@ -181,6 +252,11 @@ class Op2Unit(Unit) :
     ### @brief OP2ユニットのときに True を返す．
     def is_op2_unit(self) :
         return True
+
+    ### @brief 演算器番号を返す．
+    @property
+    def op_id(self) :
+        return self.__op_id
 
     ### @brief bias値の辞書を返す．
     @property
@@ -195,7 +271,7 @@ class RegUnit(Unit) :
     ### @param[in] id ユニット番号
     ### @param[in] reg_id レジスタ番号
     def __init__(self, id, reg_id) :
-        super().__init__(id, 1)
+        super().__init__(id, 0)
         self.__reg_id = reg_id
         self.__var_list = list()
         self.__last_step = 0
@@ -207,7 +283,7 @@ class RegUnit(Unit) :
         self.__var_list.append(var)
         if self.__last_step < var.end :
             self.__last_step = var.end
-        var.bind(self.reg_id)
+        var.bind(self.id)
         cstep = var.start
         op_id = node.unit_id
         if op_id not in self.__src_map :
@@ -251,7 +327,9 @@ class UnitMgr :
     ### @brief 初期化
     def __init__(self) :
         self.__unit_list = list()
+        self.__lm_dict = dict()
         self.__lu_list = list()
+        self.__sm_dict = dict()
         self.__su_list = list()
         self.__op1_list = list()
         self.__op2_list = list()
@@ -262,10 +340,20 @@ class UnitMgr :
     def unit_list(self) :
         return self.__unit_list
 
+    ### @brief Load Memory のリストを返す．
+    @property
+    def load_memory_list(self) :
+        return self.__lm_dict.values()
+
     ### @brief Load Unit のリストを返す．
     @property
     def load_unit_list(self) :
         return self.__lu_list
+
+    ### @brief Store Memory のリストを返す．
+    @property
+    def store_memory_list(self) :
+        return self.__sm_dict.values()
 
     ### @brief Store Unit のリストを返す．
     @property
@@ -292,25 +380,44 @@ class UnitMgr :
     ### @param[in] offset オフセット
     def new_load_unit(self, block_id, offset) :
         id = len(self.__unit_list)
-        lu = LoadUnit(id, block_id, offset)
+        lm = self.new_load_memory(block_id)
+        lu = LoadUnit(id, lm, offset)
         self.__unit_list.append(lu)
         self.__lu_list.append(lu)
         return lu
+
+    ### @biref Load Memory を作る．
+    ### @param[in] block_id ブロック番号
+    def new_load_memory(self, block_id) :
+        if block_id not in self.__lm_dict :
+            lm = MemoryBlock(block_id)
+            self.__lm_dict[block_id] = lm
+        return self.__lm_dict[block_id]
 
     ### @brief Store Unit を作る．
     ### @param[in] block_id ブロック番号
     def new_store_unit(self, block_id) :
         id = len(self.__unit_list)
-        su = StoreUnit(id, block_id)
+        sm = self.new_store_memory(block_id)
+        su = StoreUnit(id, sm)
         self.__unit_list.append(su)
         self.__su_list.append(su)
         return su
+
+    ### @biref Store Memory を作る．
+    ### @param[in] block_id ブロック番号
+    def new_store_memory(self, block_id) :
+        if block_id not in self.__sm_dict :
+            sm = MemoryBlock(block_id)
+            self.__sm_dict[block_id] = sm
+        return self.__sm_dict[block_id]
 
     ### @brief OP1 Unit を作る．
     ### @param[in] input_num 入力数
     def new_op1_unit(self, input_num) :
         id = len(self.__unit_list)
-        op = Op1Unit(id, input_num)
+        op_id = len(self.__op1_list)
+        op = Op1Unit(id, op_id, input_num)
         self.__unit_list.append(op)
         self.__op1_list.append(op)
         return op
@@ -319,7 +426,8 @@ class UnitMgr :
     ### @param[in] input_num 入力数
     def new_op2_unit(self, input_num) :
         id = len(self.__unit_list)
-        op = Op2Unit(id, input_num)
+        op_id = len(self.__op2_list)
+        op = Op2Unit(id, op_id, input_num)
         self.__unit_list.append(op)
         self.__op2_list.append(op)
         return op
@@ -345,23 +453,27 @@ class UnitMgr :
     ### @brief 内容を出力する．
     def print(self, fout) :
         # Load Unit の内容を出力する．
-        print('Load Unit', file = fout)
-        for lu in self.load_unit_list :
-            print('Unit#{}'.format(lu.id), file = fout)
-            print('  memory block: {}'.format(lu.block_id), file = fout)
+        print('Load Memory', file = fout)
+        for lm in self.load_memory_list :
+            print('Load Memory#{}'.format(lm.block_id))
+            for cstep, bank_id in lm.cond_dict.items() :
+                print('  bank#{} @ {}'.format(bank_id, cstep))
 
         # Op1 Unit の内容を出力する．
         print('Op1 Unit', file = fout)
         for op1 in self.op1_list :
-            print('Unit#{}'.format(op1.id), file = fout)
+            print('Op1#{}'.format(op1.op_id), file = fout)
             for i in range(op1.input_num) :
                 print('  Input#{}'.format(i), file = fout)
                 mux_spec = op1.mux_spec(i)
-                for src in mux_spec.src_list :
-                    if src == -1 :
+                for src_id in mux_spec.src_list :
+                    if src_id == -1 :
                         continue
-                    print('    {} @ ('.format(src), end = '', file = fout)
-                    cond_list = mux_spec.src_cond(src)
+                    print('    ', end = '', file = fout)
+                    src = self.__unit_list[src_id]
+                    UnitMgr.print_src(src, fout)
+                    print(' @ (', end = '', file = fout)
+                    cond_list = mux_spec.src_cond(src_id)
                     for cond in cond_list :
                         print(' {}'.format(cond), end = '', file = fout)
                     print(')', file = fout)
@@ -370,32 +482,65 @@ class UnitMgr :
         # Op2 Unit の内容を出力する．
         print('Op2 Unit', file = fout)
         for op2 in self.op2_list :
-            print('Unit#{}'.format(op2.id), file = fout)
+            print('Op2#{}'.format(op2.op_id), file = fout)
             for i in range(op2.input_num) :
                 print('  Input#{}'.format(i), file = fout)
                 mux_spec = op2.mux_spec(i)
-                for src in mux_spec.src_list :
-                    if src == -1 :
+                for src_id in mux_spec.src_list :
+                    if src_id == -1 :
                         continue
-                    print('    {} @ ('.format(src), end = '', file = fout)
-                    cond_list = mux_spec.src_cond(src)
+                    src = self.__unit_list[src_id]
+                    #assert src.is_reg_unit()
+                    UnitMgr.print_src(src, fout)
+                    print(' @ (', end = '', file = fout)
+                    cond_list = mux_spec.src_cond(src_id)
                     for cond in cond_list :
                         print(' {}'.format(cond), end = '', file = fout)
                     print(')', file = fout)
             print(file = fout)
 
         # Store Unit の内容を出力する．
+        print('Store Memory', file = fout)
+        for sm in self.store_memory_list :
+            print('Store Memory#{}'.format(sm.block_id), file = fout)
+            for cstep, bank_id in sm.cond_dict.items() :
+                print('  bank#{} @ {}'.format(bank_id, cstep), file = fout)
+
         print('Store Unit', file = fout)
         for su in self.store_unit_list :
-            print('Unit#{}'.format(su.id), file = fout)
-            print('  memory block: {}'.format(su.block_id), file = fout)
+            print('Store Unit#{}[{}]'.format(su.id, su.block_id))
             mux_spec = su.mux_spec(0)
-            for src in mux_spec.src_list :
-                if src == -1 :
+            for src_id in mux_spec.src_list :
+                if src_id == -1 :
                     continue
-                print('    {} @ ('.format(src), end = '', file = fout)
-                cond_list = mux_spec.src_cond(src)
+                print('    ', end = '', file = fout)
+                src = self.__unit_list[src_id]
+                UnitMgr.print_src(src, fout)
+                print(' @ (', end = '', file = fout)
+                cond_list = mux_spec.src_cond(src_id)
                 for cond in cond_list :
                     print(' {}'.format(cond), end = '', file = fout)
                 print(')', file = fout)
             print(file = fout)
+
+        print('Register Unit', file = fout)
+        for reg in self.reg_list :
+            print('Reg#{}'.format(reg.reg_id))
+            for unit_id, cstep in reg.src_map.items() :
+                src = self.__unit_list[unit_id]
+                print('    ', end = '', file = fout)
+                UnitMgr.print_src(src, fout)
+                print(' @{}'.format(unit_id, cstep))
+
+    @staticmethod
+    def print_src(unit, fout) :
+        if unit.is_load_unit() :
+            print('Mem#{}[{}]'.format(unit.block_id, unit.offset), end = '', file = fout)
+        elif unit.is_reg_unit() :
+            print('Reg#{}'.format(unit.reg_id), end = '', file = fout)
+        elif unit.is_op1_unit() :
+            print('Op1#{}'.format(unit.op_id), end = '', file = fout)
+        elif unit.is_op2_unit() :
+            print('Op2#{}'.format(unit.op_id), end = '', file = fout)
+        else :
+            assert False

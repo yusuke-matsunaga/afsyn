@@ -598,17 +598,24 @@ if __name__ == '__main__' :
         exit(1)
 
     memory_size = 1500
-    block_num = 24
-    bank_size = 16
+    #block_num = 24
+    block_num = 12
+    bank_size = 32
     print('Block num: {}'.format(block_num))
     print('Bank Size: {}'.format(bank_size))
     imem_layout = MemLayout(memory_size, block_num, bank_size)
     omemory_size = len(op_list)
     oblock_num = 8
-    obank_size = 16
+    obank_size = 1
     omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
     dfg = make_graph(op_list, imem_layout, omem_layout)
     print('# of nodes: {}'.format(len(dfg.node_list)))
     print('# of OP1 nodes: {}'.format(len(dfg.op1node_list)))
     print('# of OP2 nodes: {}'.format(len(dfg.op2node_list)))
     print('# of MemSink:   {}'.format(len(dfg.memsinknode_list)))
+
+    for node in dfg.memsrcnode_list :
+        print('[MEMSRC] #{}: {}-{}-{}'.format(node.id, node.block_id, node.bank_id, node.offset))
+
+    for node in dfg.memsinknode_list :
+        print('[MEMSINK] #{}: {}-{}-{}'.format(node.id, node.block_id, node.bank_id, node.offset))

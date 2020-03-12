@@ -10,63 +10,6 @@
 from scheduling import scheduling
 from binder import bind
 
-def print_reg_spec(reg_list) :
-    for reg_spec in reg_list :
-        print('REG#{}:'.format(reg_spec.id))
-        for (block, offset), s_list in sorted(reg_spec.memsrc_map().items()) :
-            print('  MEM#{}[{}]:'.format(block, offset), end = '')
-            for cstep, bank in s_list :
-                print(' bank#{}@{}'.format(bank, cstep), end = '')
-            print()
-        for op_id, s_list in sorted(reg_spec.opsrc_map().items()) :
-            print('  OP#{}:'.format(op_id), end = '')
-            for cstep in s_list :
-                print(' @{}'.format(cstep), end = '')
-            print()
-        print()
-
-def print_op1_spec(op1_list) :
-    for op_id, op1_spec in enumerate(op1_list) :
-        print('OP1#{}:'.format(op_id))
-        for i in range(op1_spec.input_num) :
-            mux = op1_spec.mux_spec(i)
-            print('  I#{}:'.format(i))
-            for src_id, s_list in sorted(mux.src_dict.items()) :
-                if src_id == -1 :
-                    print('     C0:', end = '')
-                else :
-                    print('     REG#{}:'.format(src_id), end = '')
-                for cstep in s_list :
-                    print(' @{}'.format(cstep), end = '')
-                print()
-                print('     INV condition: ', end = '')
-                for cstep in op1_spec.inv_cond(i) :
-                    print(' @{}'.format(cstep), end = '')
-                print()
-            print()
-        print()
-
-def print_op2_spec(op2_list) :
-    for op_id, op2_spec in enumerate(op2_list) :
-        print('OP2#{}:'.format(op_id))
-        for i in range(op2_spec.input_num) :
-            mux = op2_spec.mux_spec(i)
-            print('  I#{}:'.format(i))
-            for src_id, s_list in sorted(mux.src_dict.items()) :
-                if src_id == -1 :
-                    print('     C0:', end = '')
-                else :
-                    print('     REG#{}:'.format(src_id), end = '')
-                for cstep in s_list :
-                    print(' @{}'.format(cstep), end = '')
-                print()
-                print('  BIAS')
-                for cstep, bias in sorted(op2_spec.bias_map().items()) :
-                    print('    {}@{}'.format(bias, cstep), end = '')
-                print()
-            print()
-        print()
-
 
 if __name__ == '__main__' :
     import sys
@@ -98,7 +41,7 @@ if __name__ == '__main__' :
     #mem_conf = ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32))
     mem_conf = ((24, 32), )
     #op1_conf = (16, 32, 64, 128)
-    op1_conf = (32, )
+    op1_conf = (16, )
     #m_conf = (1, 2)
     m_conf = (2,)
     #s_conf = (1, 2, 3)
