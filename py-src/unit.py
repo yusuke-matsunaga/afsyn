@@ -14,15 +14,26 @@ class MuxSpec :
     def __init__(self) :
         self.__src_cond_dict = dict()
         self.__src_list = list()
+        self.__src_dict = dict()
 
     ### @brief 入力を追加する．
     ### @param[in] src_id ソースの演算器番号
     ### @param[in] cstep コントロールステップ
-    def add_src(self, src_id, cstep) :
+    def add_src(self, src, cstep) :
+        src_id = src.id
         if src_id not in self.__src_cond_dict :
             self.__src_cond_dict[src_id] = list()
-            self.__src_list.append(src_id)
+            self.__src_list.append(src)
         self.__src_cond_dict[src_id].append(cstep)
+        if cstep in self.__src_dict :
+            print('Error in MuxSpec.add_src({}, {})'.format(src_id, cstep))
+            for src_id, cond_list in self.__src_cond_dict.items() :
+                print('{}: '.format(src_id), end = '')
+                for cond in cond_list :
+                    print(' {}'.format(cond), end = '')
+                print()
+        assert cstep not in self.__src_dict
+        self.__src_dict[cstep] = src
 
     ### @brief ソースのリストを返す．
     @property
@@ -30,8 +41,17 @@ class MuxSpec :
         return self.__src_list
 
     ### @brief ソースの条件(cstep)のリストを返す．
-    def src_cond(self, src_id) :
-        return self.__src_cond_dict[src_id]
+    def src_cond(self, src) :
+        return self.__src_cond_dict[src.id]
+
+    ### @brief cstep をキーにしてソースを得る．
+    ###
+    ### その時刻のソースがない場合には None を返す．
+    def src(self, cstep) :
+        if cstep in self.__src_dict :
+            return self.__src_dict[cstep]
+        else :
+            return None
 
 
 ### @brief 演算器を表すクラス
@@ -52,10 +72,13 @@ class Unit :
 
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
-    ### @param[in] src_id ソースのレジスタ番号
+    ### @param[in] src ソース
     ### @param[in] cstep コントロールステップ
-    def _add_src(self, i, src_id, cstep) :
-        self.__mux_list[i].add_src(src_id, cstep)
+    def _add_src(self, i, src, cstep) :
+        if src is None :
+            return
+        assert not src.is_store_unit()
+        self.__mux_list[i].add_src(src, cstep)
 
     ### @brief 入力数を返す．
     @property
@@ -95,7 +118,9 @@ class MemoryBlock :
     ### @param[in] block_id ブロック番号
     def __init__(self, block_id) :
         self.__block_id = block_id
+        self.__bank_dict = dict()
         self.__cond_dict = dict()
+        self.__ivals = dict()
 
     ### @brief ブロック番号を返す．
     @property
@@ -104,18 +129,42 @@ class MemoryBlock :
 
     ### @brief バンク選択条件を追加する．
     def add_cond(self, cstep, bank_id) :
-        if cstep in self.__cond_dict :
-            assert self.__cond_dict[cstep] == bank_id
+        if cstep in self.__bank_dict :
+            assert self.__bank_dict[cstep] == bank_id
         else :
-            self.__cond_dict[cstep] = bank_id
+            self.__bank_dict[cstep] = bank_id
+        if bank_id not in self.__cond_dict :
+            self.__cond_dict[bank_id] = list()
+        if cstep not in self.__cond_dict[bank_id] :
+            self.__cond_dict[bank_id].append(cstep)
 
-    ### @brief バンク選択条件の辞書を返す．
+    ### @brief バンクの辞書を返す．
     ###
     ### cstep をキーとしてそのときに選択されて
     ### いるバンク番号を格納している．
     @property
+    def bank_dict(self) :
+        return self.__bank_dict
+
+    ### @brief バンクが選ばれる条件の辞書を返す．
+    @property
     def cond_dict(self) :
         return self.__cond_dict
+
+    ### @brief 値を設定する．
+    ### @param[in] bank_id バンク番号
+    ### @param[in] offset オフセット
+    ### @param[in] ival 値
+    def set_ival(self, bank_id, offset, ival) :
+        key = bank_id, offset
+        self.__ivals[key] = ival
+
+    ### @brief 値を取得する．
+    ### @param[in] bank_id バンク番号
+    ### @param[in] offset オフセット
+    def get_ival(self, bank_id, offset) :
+        key = bank_id, offset
+        return self.__ivals[key]
 
 
 ### @brief ロードユニット
@@ -129,6 +178,7 @@ class LoadUnit(Unit) :
         super().__init__(id, 0)
         self.__block = mem_block
         self.__offset = offset
+        self.__val = None
 
     ### @brief ロード条件を追加する．
     def add_cond(self, cstep, bank_id) :
@@ -153,8 +203,20 @@ class LoadUnit(Unit) :
     ### cstep をキーとしてそのときに選択されて
     ### いるバンク番号を格納している．
     @property
-    def cond_dict(self) :
-        return self.__block.cond_dict
+    def bank_dict(self) :
+        return self.__block.bank_dict
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] step
+    def eval_on(self, step) :
+        if step in self.__block.bank_dict :
+            bank_id = self.__block.bank_dict[step]
+            val = self.__block.read_val(bank_id)
+            self.__val = extract(val, offset)
+
+    ### @brief シミュレーション結果を返す．
+    def value(self) :
+        return self.__val
 
 
 ### @brief ストアユニット
@@ -168,8 +230,8 @@ class StoreUnit(Unit) :
         self.__block = mem_block
 
     ### @brief ストア条件を追加する．
-    def add_src(self, src_id, cstep, bank_id) :
-        super()._add_src(0, src_id, cstep)
+    def add_src(self, src, cstep, bank_id) :
+        super()._add_src(0, src, cstep)
         self.__block.add_cond(cstep, bank_id)
 
     ### @brief ストアユニットのときに True を返す．
@@ -186,8 +248,16 @@ class StoreUnit(Unit) :
     ### cstep をキーとしてそのときに選択されて
     ### いるバンク番号を格納している．
     @property
-    def cond_dict(self) :
-        return self.__block.cond_dict
+    def bank_dict(self) :
+        return self.__block.bank_dict
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] step
+    def eval_on(self, step) :
+        if step in self.bank_dict :
+            bank_id = self.bank_dict[step]
+            val = self.mux_spec(0).src(step)
+            self.__block.set_ival(bank_id, 0, val)
 
 
 ### @brief OP1ユニット
@@ -201,14 +271,15 @@ class Op1Unit(Unit) :
         super().__init__(id, input_num)
         self.__op_id = op_id
         self.__inv_cond_list = [ list() for i in range(input_num) ]
+        self.__value = None
 
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
     ### @param[in] cstep コントロールステップ
-    ### @param[in] src_id ソースのレジスタ番号
+    ### @param[in] src ソース
     ### @param[in] inv 反転する時に True にするフラグ
-    def add_src(self, i, src_id, cstep, inv) :
-        super()._add_src(i, src_id, cstep)
+    def add_src(self, i, src, cstep, inv) :
+        super()._add_src(i, src, cstep)
         if inv :
             self.__inv_cond_list[i].append(cstep)
 
@@ -225,6 +296,19 @@ class Op1Unit(Unit) :
     def inv_cond(self, i) :
         return self.__inv_cond_list[i]
 
+    ### @brief シミュレーションを行う．
+    ### @param[in] step
+    def eval_on(self, step) :
+        val = 0
+        for i in range(self.input_num) :
+            mux = self.mux_spec(i)
+            src = mux.src(step)
+            if src is None :
+                break
+            val += src.value()
+        else :
+            self.__value = val
+
 
 ### @brief OP2ユニット
 class Op2Unit(Unit) :
@@ -237,13 +321,14 @@ class Op2Unit(Unit) :
         super().__init__(id, input_num)
         self.__op_id = op_id
         self.__bias_map = dict()
+        self.__value = None
 
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
     ### @param[in] cstep コントロールステップ
-    ### @param[in] src_id ソースのレジスタ番号
-    def add_src(self, i, src_id, cstep) :
-        super()._add_src(i, src_id, cstep)
+    ### @param[in] src ソース
+    def add_src(self, i, src, cstep) :
+        super()._add_src(i, src, cstep)
 
     ### @brief cstep ごとの bias 値を設定する．
     def add_bias(self, bias, cstep) :
@@ -263,6 +348,22 @@ class Op2Unit(Unit) :
     def bias_map(self) :
         return self.__bias_map
 
+    ### @brief シミュレーションを行う．
+    ### @param[in] step
+    def eval_on(self, step) :
+        val = 0
+        for i in range(self.input_num) :
+            mux = self.mux_spec(i)
+            src = mux.src(step)
+            if src is None :
+                break
+            val += src.value()
+        else :
+            self.__value = val
+            assert step in self.__bias_map
+            val += self.__bias_map[step]
+            self.__value = val
+
 
 ### @brief レジスタの仕様を表すクラス
 class RegUnit(Unit) :
@@ -275,7 +376,9 @@ class RegUnit(Unit) :
         self.__reg_id = reg_id
         self.__var_list = list()
         self.__last_step = 0
-        self.__src_map = dict()
+        self.__cond_map = dict()
+        #self.__src_map = dict()
+        self.__value = None
 
     ### @brief ソースの情報を追加する．
     def add_src(self, node) :
@@ -286,9 +389,9 @@ class RegUnit(Unit) :
         var.bind(self.id)
         cstep = var.start
         op_id = node.unit_id
-        if op_id not in self.__src_map :
-            self.__src_map[op_id] = list()
-        self.__src_map[op_id].append(cstep)
+        if op_id not in self.__cond_map :
+            self.__cond_map[op_id] = list()
+        self.__cond_map[op_id].append(cstep)
 
     ### @brief レジスタのときに True を返す．
     def is_reg_unit(self) :
@@ -311,14 +414,19 @@ class RegUnit(Unit) :
 
     ### @brief 同じソースがあったら True を返す．
     def has_samesrc(self, node) :
-        return node.unit_id in self.__src_map
+        return node.unit_id in self.__cond_map
 
-    ### @brief ソースの辞書を返す．
+    ### @brief ソースの条件の辞書を返す．
     ###
     ### キーはユニット番号で値は cstep のリスト
     @property
-    def src_map(self) :
-        return self.__src_map
+    def cond_map(self) :
+        return self.__cond_map
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] step
+    def eval_on(self, step) :
+        pass
 
 
 ### @brief 演算器を管理するマネージャ
@@ -446,34 +554,43 @@ class UnitMgr :
     ### @param[in] ivals 入力値
     ### @return 出力値を納めた辞書を返す．
     def simulate(self, dfg, ivals) :
+        # 入力値を load memory にセットする．
+
         for step in range(dfg.total_step) :
             for unit in self.__unit_list :
-                pass
+                unit.eval_on(step)
+
+        # 出力値を store memory から取り出す．
 
     ### @brief 内容を出力する．
     def print(self, fout) :
         # Load Unit の内容を出力する．
         print('Load Memory', file = fout)
         for lm in self.load_memory_list :
-            print('Load Memory#{}'.format(lm.block_id))
-            for cstep, bank_id in lm.cond_dict.items() :
-                print('  bank#{} @ {}'.format(bank_id, cstep))
+            print('Load Memory#{}'.format(lm.block_id), file = fout)
+            for bank_id, cond_list in lm.cond_dict.items() :
+                print('  bank#{} @ ('.format(bank_id), end = '', file = fout)
+                for cond in cond_list :
+                    print(' {}'.format(cond), end = '', file = fout)
+                print(')', file = fout)
 
         # Op1 Unit の内容を出力する．
         print('Op1 Unit', file = fout)
         for op1 in self.op1_list :
             print('Op1#{}'.format(op1.op_id), file = fout)
             for i in range(op1.input_num) :
-                print('  Input#{}'.format(i), file = fout)
+                first = True
                 mux_spec = op1.mux_spec(i)
-                for src_id in mux_spec.src_list :
-                    if src_id == -1 :
+                for src in mux_spec.src_list :
+                    if src == None :
                         continue
+                    if first :
+                        print('  Input#{}'.format(i), file = fout)
+                        first = False
                     print('    ', end = '', file = fout)
-                    src = self.__unit_list[src_id]
                     UnitMgr.print_src(src, fout)
                     print(' @ (', end = '', file = fout)
-                    cond_list = mux_spec.src_cond(src_id)
+                    cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
                         print(' {}'.format(cond), end = '', file = fout)
                     print(')', file = fout)
@@ -484,16 +601,19 @@ class UnitMgr :
         for op2 in self.op2_list :
             print('Op2#{}'.format(op2.op_id), file = fout)
             for i in range(op2.input_num) :
-                print('  Input#{}'.format(i), file = fout)
+                first = True
                 mux_spec = op2.mux_spec(i)
-                for src_id in mux_spec.src_list :
-                    if src_id == -1 :
+                for src in mux_spec.src_list :
+                    if src == None :
                         continue
-                    src = self.__unit_list[src_id]
-                    #assert src.is_reg_unit()
+                    if first :
+                        print('  Input#{}'.format(i), file = fout)
+                        first = False
+                    assert src.is_reg_unit()
+                    print('    ', end = '', file = fout)
                     UnitMgr.print_src(src, fout)
                     print(' @ (', end = '', file = fout)
-                    cond_list = mux_spec.src_cond(src_id)
+                    cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
                         print(' {}'.format(cond), end = '', file = fout)
                     print(')', file = fout)
@@ -503,21 +623,23 @@ class UnitMgr :
         print('Store Memory', file = fout)
         for sm in self.store_memory_list :
             print('Store Memory#{}'.format(sm.block_id), file = fout)
-            for cstep, bank_id in sm.cond_dict.items() :
-                print('  bank#{} @ {}'.format(bank_id, cstep), file = fout)
+            for bank_id, cond_list in sm.cond_dict.items() :
+                print('  bank#{} @ ('.format(bank_id), end = '', file = fout)
+                for cond in cond_list :
+                    print(' {}'.format(cond), end = '', file = fout)
+                print(')', file = fout)
 
         print('Store Unit', file = fout)
         for su in self.store_unit_list :
             print('Store Unit#{}[{}]'.format(su.id, su.block_id))
             mux_spec = su.mux_spec(0)
-            for src_id in mux_spec.src_list :
-                if src_id == -1 :
+            for src in mux_spec.src_list :
+                if src == None :
                     continue
                 print('    ', end = '', file = fout)
-                src = self.__unit_list[src_id]
                 UnitMgr.print_src(src, fout)
                 print(' @ (', end = '', file = fout)
-                cond_list = mux_spec.src_cond(src_id)
+                cond_list = mux_spec.src_cond(src)
                 for cond in cond_list :
                     print(' {}'.format(cond), end = '', file = fout)
                 print(')', file = fout)
@@ -526,11 +648,14 @@ class UnitMgr :
         print('Register Unit', file = fout)
         for reg in self.reg_list :
             print('Reg#{}'.format(reg.reg_id))
-            for unit_id, cstep in reg.src_map.items() :
+            for unit_id, cstep_list in reg.cond_map.items() :
                 src = self.__unit_list[unit_id]
                 print('    ', end = '', file = fout)
                 UnitMgr.print_src(src, fout)
-                print(' @{}'.format(unit_id, cstep))
+                print(' @ (', end = '', file = fout)
+                for cstep in cstep_list :
+                    print(' {}'.format(cstep), end = '', file = fout)
+                print(')', file = fout)
 
     @staticmethod
     def print_src(unit, fout) :
@@ -542,5 +667,8 @@ class UnitMgr :
             print('Op1#{}'.format(unit.op_id), end = '', file = fout)
         elif unit.is_op2_unit() :
             print('Op2#{}'.format(unit.op_id), end = '', file = fout)
+        elif unit.is_store_unit() :
+            print('Store#{}'.format(unit.block_id), end = '', file = fout)
+            assert False
         else :
             assert False

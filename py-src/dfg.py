@@ -220,10 +220,10 @@ class OpNode(Node) :
 class Var :
 
     ### @brief 初期化
-    ### @param[in] src_id ソースID
+    ### @param[in] src ソース
     ### @param[in] start src_id の cstep
-    def __init__(self, src_id, start) :
-        self.__src_id = src_id
+    def __init__(self, src, start) :
+        self.__src = src
         self.__tgt_id_list = []
         self.__start = start
         self.__end = -1
@@ -240,8 +240,8 @@ class Var :
 
     ### @brief ソースIDを返す．
     @property
-    def src_id(self) :
-        return self.__src_id
+    def src(self) :
+        return self.__src
 
     ### @brief ターゲットIDのリストを返す．
     @property
@@ -464,7 +464,7 @@ class DFG :
             # （＝同じバンク)
             key = (node.block_id, node.offset, step)
             if key not in memvar_map :
-                var = Var(node.id, step)
+                var = Var(node, step)
                 memvar_map[key] = var
                 self.__var_list.append(var)
             else :
@@ -476,7 +476,7 @@ class DFG :
                 key = (inode.block_id, inode.offset, inode.cstep)
                 var = memvar_map[key]
                 var.add_tgt_id(node.id, node.cstep)
-            ovar = Var(node.id, node.cstep)
+            ovar = Var(node, node.cstep)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
@@ -485,7 +485,7 @@ class DFG :
             for inode in node.fanin_list :
                 var = opvar_map[inode.id]
                 var.add_tgt_id(node.id, node.cstep)
-            ovar = Var(node.id, node.cstep)
+            ovar = Var(node, node.cstep)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
@@ -498,7 +498,7 @@ class DFG :
         # OP1ノードは一対一
         for node in self.op1node_list :
             step = node.cstep
-            var = Var(node.id, step)
+            var = Var(node, step)
             self.__var_list.append(var)
             node.attach_var(var)
 
@@ -516,7 +516,7 @@ class DFG :
             n = 0
             for var in svar_list :
                 if var.start +1 == var.end :
-                    inode = self.__node_list[var.src_id]
+                    inode = var.src
                     if inode.is_memsrc or inode.is_op2 :
                         continue
                 if var.end <= step :

@@ -25,8 +25,7 @@ def reg_bind1(dfg, unit_mgr, var_list) :
             if reg.last_step > var.start :
                 # life-time がオーバラップしている．
                 continue
-            node = dfg.node_list[var.src_id]
-            if reg.has_samesrc(node) :
+            if reg.has_samesrc(var.src) :
                 w = 2
             else :
                 w = 1
@@ -44,8 +43,7 @@ def reg_bind1(dfg, unit_mgr, var_list) :
     for reg_id, var_id in match :
         reg = unit_mgr.reg_list[reg_id]
         var = cur_var_list[var_id]
-        node = dfg.node_list[var.src_id]
-        reg.add_src(node)
+        reg.add_src(var.src)
         bound_vars.add(var_id)
         bound_regs.add(reg_id)
 
@@ -70,8 +68,7 @@ def reg_bind2(dfg, unit_mgr, var_list) :
             if reg.last_step > var.start :
                 # life-time がオーバラップしている．
                 continue
-            node = dfg.node_list[var.src_id]
-            if reg.has_samesrc(node) :
+            if reg.has_samesrc(var.src) :
                 edge_list.append( (reg.reg_id, i, 1) )
 
     print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), nvars, len(edge_list)))
@@ -86,11 +83,7 @@ def reg_bind2(dfg, unit_mgr, var_list) :
     for reg_id, var_id in match :
         reg = unit_mgr.reg_list[reg_id]
         var = var_list[var_id]
-        node = dfg.node_list[var.src_id]
-        reg.add_src(node)
-        if node.is_op2 :
-            print('src is Op2#{}'.format(node.id))
-            print(' {} - {}'.format(var.start, var.end))
+        reg.add_src(var.src)
         bound_vars.add(var_id)
         bound_regs.add(reg_id)
 
@@ -119,8 +112,7 @@ def reg_bind2(dfg, unit_mgr, var_list) :
     for reg_id, var_id in match :
         reg = unit_mgr.reg_list[reg_id]
         var = var_list[var_id]
-        node = dfg.node_list[var.src_id]
-        reg.add_src(node)
+        reg.add_src(var.src)
         bound_vars.add(var_id)
         bound_regs.add(reg_id)
 
@@ -132,8 +124,7 @@ def reg_bind2(dfg, unit_mgr, var_list) :
         if i in bound_vars :
             continue
         reg = unit_mgr.new_reg_unit()
-        node = dfg.node_list[var.src_id]
-        reg.add_src(node)
+        reg.add_src(var.src)
 
 
 ### @brief レジスタ割り当てを行う．
@@ -144,13 +135,12 @@ def bind_register(dfg, unit_mgr) :
     var_list = list()
     for var in dfg.var_list :
         if var.start + 1 == var.end :
-            inode = dfg.node_list[var.src_id]
-            if inode.is_memsrc :
-                # メモリブロックから直接演算器につながっている．
-                var.bind(inode.unit_id)
-            elif inode.is_op2 :
-                # OP2 から直接メモリに書き込む．
-                var.bind(inode.unit_id)
+            inode = var.src
+            if inode.is_memsrc or inode.is_op2 :
+                unit_id = inode.unit_id
+                var.bind(unit_id)
+            else :
+                var_list.append(var)
         else :
             var_list.append(var)
     var_list.sort()
@@ -223,10 +213,7 @@ def input_binding(src_list_map, max_fanin) :
                     break
             else :
                 assert False
-        # 未使用の入力ソースを -1 にしておく
-        for i in range(max_fanin) :
-            if i not in used :
-                bound_src_list[i] = -1, False
+
         # bound_src_list の内容を sel_src_list に移す．
         for i, (src, inv) in enumerate(bound_src_list) :
             sel_src_list[i][cstep] = src, inv
@@ -243,24 +230,23 @@ def alloc_selecter(dfg, unit_mgr) :
         src_list = list()
         for i, inode in enumerate(node.fanin_list) :
             var = inode.var
-            unit_id = var.unit_id
+            unit = unit_mgr.unit_list[var.unit_id]
             w = node.weight_list[i]
-            src_list.append( (unit_id, w) )
+            src_list.append( (unit, w) )
         op_id = node.unit_id
         if op_id not in src_list_map_dict :
             src_list_map_dict[op_id] = dict()
         src_list_map_dict[op_id][node.cstep] = src_list
 
     for op in unit_mgr.op1_list :
-        assert op.id in src_list_map_dict
         # cstep をキーにしたファンインのレジスタ番号のリストの辞書
         src_list_map = src_list_map_dict[op.id]
         # 入力のバインディングを行う．
-        sel_src_list = input_binding(src_list_map, 16)
-        n = len(sel_src_list)
-        for i, sel_src in enumerate(sel_src_list) :
-            for cstep, (src_id, inv) in sel_src.items() :
-                op.add_src(i, src_id, cstep, inv)
+        sel_src_dict = input_binding(src_list_map, 16)
+        n = len(sel_src_dict)
+        for i, sel_src in enumerate(sel_src_dict) :
+            for cstep, (src, inv) in sel_src.items() :
+                op.add_src(i, src, cstep, inv)
 
         if debug :
             print('OP1#{}: # of inputs: {}'.format(op.id, n))
@@ -280,8 +266,9 @@ def alloc_selecter(dfg, unit_mgr) :
         src_list = list()
         for inode in node.fanin_list :
             var = inode.var
-            unit_id = var.unit_id
-            src_list.append( (unit_id, 1) )
+            unit = unit_mgr.unit_list[var.unit_id]
+            assert not unit.is_store_unit()
+            src_list.append( (unit, 1) )
         op_id = node.unit_id
         if op_id not in src_list_map_dict :
             src_list_map_dict[op_id] = dict()
@@ -297,8 +284,8 @@ def alloc_selecter(dfg, unit_mgr) :
         sel_src_list = input_binding(src_list_map, 15)
         n = len(sel_src_list)
         for i, sel_src in enumerate(sel_src_list) :
-            for cstep, (src_id, inv) in sel_src.items() :
-                op.add_src(i, src_id, cstep)
+            for cstep, (src, inv) in sel_src.items() :
+                op.add_src(i, src, cstep)
         for cstep, bias in bias_map_dict[op_id].items() :
             op.add_bias(cstep, bias)
 
@@ -350,9 +337,6 @@ def bind(dfg) :
         op = unit_mgr.op2_list[pos]
         node.bind(op.id)
         op2_count[step] += 1
-        onode = node.fanout
-        su = unit_mgr.unit_list[onode.unit_id]
-        su.mux_spec(0).add_src(op.id, step)
 
     # レジスタ割り当てを行う．
     bind_register(dfg, unit_mgr)
@@ -368,7 +352,8 @@ def bind(dfg) :
         node.bind(su.id)
         inode = node.src
         var = inode.var
-        su.add_src(var.unit_id, node.cstep, node.bank_id)
+        src = unit_mgr.unit_list[var.unit_id]
+        su.add_src(src, node.cstep, node.bank_id)
 
     # セレクタの生成を行う．
     alloc_selecter(dfg, unit_mgr)
