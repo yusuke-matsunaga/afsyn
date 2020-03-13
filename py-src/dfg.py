@@ -310,7 +310,9 @@ class DFG :
     ### @brief 初期化
     ###
     ### 空のグラフを生成する．
-    def __init__(self) :
+    def __init__(self, imem_layout, omem_layout) :
+        self.__imem_layout = imem_layout
+        self.__omem_layout = omem_layout
         self.__node_list = []
         self.__memsrcnode_list = []
         self.__memsinknode_list = []
@@ -323,23 +325,25 @@ class DFG :
         self.__var_list = []
 
     ### @brief メモリソースノードを作る．
-    ### @param[in] block_id ブロック番号
-    ### @param[in] bank_id バンク番号
-    ### @param[in] offset オフセット
-    def make_memsrc(self, block_id, bank_id, offset) :
+    ### @param[in] i_id 入力番号
+    def make_memsrc(self, i_id) :
         id = len(self.__node_list)
+        block_id = self.__imem_layout.block_id(i_id)
+        bank_id = self.__imem_layout.bank_id(i_id)
+        offset = self.__imem_layout.offset(i_id)
         node = MemSrcNode(id, block_id, bank_id, offset)
         self.__node_list.append(node)
         self.__memsrcnode_list.append(node)
         return node
 
     ### @brief メモリシンクノードを作る．
-    ### @param[in] block_id ブロック番号
-    ### @param[in] bank_id バンク番号
-    ### @param[in] offset オフセット
+    ### @param[in] o_id 出力番号
     ### @param[in] src 入力ソース
-    def make_memsink(self, block_id, bank_id, offset, src) :
+    def make_memsink(self, o_id, src) :
         id = len(self.__node_list)
+        block_id = self.__omem_layout.block_id(o_id)
+        bank_id = self.__omem_layout.bank_id(o_id)
+        offset = self.__omem_layout.offset(o_id)
         node = MemSinkNode(id, block_id, bank_id, offset, src)
         self.__node_list.append(node)
         self.__memsinknode_list.append(node)
@@ -360,6 +364,16 @@ class DFG :
         else :
             assert False
         return node
+
+    ### @brief 入力のメモリレイアウトを返す．
+    @property
+    def imem_layout(self) :
+        return self.__imem_layout
+
+    ### @brief 出力のメモリレイアウトを返す．
+    @property
+    def omem_layout(self) :
+        return self.__omem_layout
 
     ### @brief 全ノードのリストを返す．
     @property
@@ -536,17 +550,14 @@ class DFG :
 ### @param[in] omem_layout 出力メモリレイアウト
 ### @return DFG を返す．
 def make_graph(op_list, imem_layout, omem_layout) :
-    dfg = DFG()
+    dfg = DFG(imem_layout, omem_layout)
     for o_id, op in enumerate(op_list) :
         l1_fanin_list = []
         l1_fanin_num = 0
         l1_weight_list = []
         l2_fanin_list = []
         for i_id, w in op.fanin_list :
-            block_id = imem_layout.block_id(i_id)
-            bank_id = imem_layout.bank_id(i_id)
-            offset = imem_layout.offset(i_id)
-            mem_node = dfg.make_memsrc(block_id, bank_id, offset)
+            mem_node = dfg.make_memsrc(i_id)
             if w == 0.25 :
                 n = 2
             else :
@@ -567,10 +578,7 @@ def make_graph(op_list, imem_layout, omem_layout) :
         node = dfg.make_op(l2_fanin_list, 2)
         for inode in l2_fanin_list :
             inode.set_fanout(node)
-        block_id = omem_layout.block_id(o_id)
-        bank_id = omem_layout.bank_id(o_id)
-        offset = omem_layout.offset(o_id)
-        onode = dfg.make_memsink(block_id, bank_id, offset, node)
+        onode = dfg.make_memsink(o_id, node)
         node.set_fanout(onode)
 
     return dfg

@@ -65,4 +65,4 @@ if __name__ == '__main__' :
                     dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
                     print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
                     unit_mgr = bind(dfg)
-                    unit_mgr.print(sys.stdout)
+                    #unit_mgr.print(sys.stdout)
