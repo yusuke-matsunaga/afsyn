@@ -19,7 +19,7 @@ class Node :
     ### @param[in] fanin_list ファンインノードのリスト
     def __init__(self, id, fanin_list) :
         self.__id = id
-        self.__fanin_list = fanin_list
+        self.__fanin_list = list(fanin_list)
         self.__cstep = -1
         self.__var = None
         self.__unit_id = -1
@@ -76,8 +76,6 @@ class Node :
 
     ### @brief 関連する変数をセットする．
     ### @param[in] var 関連する変数
-    ###
-    ### OP2 ノードにはない．
     def attach_var(self, var) :
         self.__var = var
 
@@ -157,6 +155,7 @@ class MemSinkNode(MemNode) :
     def src(self) :
         return self.__src
 
+
 ### @brief 演算ノード
 class OpNode(Node) :
 
@@ -167,11 +166,19 @@ class OpNode(Node) :
     ### @param[in] weight_list 重みのリスト
     ###
     ### level == 2 のときは weight_list はない．
-    def __init__(self, id, fanin_list, level, weight_list = None) :
+    def __init__(self, id, fanin_list, level, weight_list = List()) :
         super().__init__(id, fanin_list)
         self.__level = level
-        self.__weight_list = weight_list
+        self.__weight_list = list(weight_list)
         self.__fanout = None
+        bias = 0
+        if self.is_op1 :
+            for w in self.__weight_list :
+                if w < 0 :
+                    ans += 1
+        else :
+            for inode in self.fanin_list :
+                ans += inode.bias
 
     ### @brief OP1ノードのとき True を返す．
     @property
@@ -196,14 +203,6 @@ class OpNode(Node) :
     ### @brief 負の重みを持つ入力数
     @property
     def bias(self) :
-        ans = 0
-        if self.is_op1 :
-            for w in self.__weight_list :
-                if w < 0 :
-                    ans += 1
-        else :
-            for inode in self.fanin_list :
-                ans += inode.bias
         return ans
 
     ### @brief ファンアウトをセットする．
@@ -220,12 +219,11 @@ class OpNode(Node) :
 class Var :
 
     ### @brief 初期化
-    ### @param[in] src ソース
-    ### @param[in] start src_id の cstep
-    def __init__(self, src, start) :
+    ### @param[in] src_node ソースノード
+    def __init__(self, src) :
         self.__src = src
         self.__tgt_id_list = []
-        self.__start = start
+        self.__start = src.cstep
         self.__end = -1
         self.__unit_id = -1
 
@@ -238,7 +236,7 @@ class Var :
             self.__end = end
         assert self.__start < self.__end
 
-    ### @brief ソースIDを返す．
+    ### @brief ソースノードを返す．
     @property
     def src(self) :
         return self.__src
@@ -280,7 +278,9 @@ class Var :
         else :
             return None
 
-    ### @brief Unit 番号を返す．
+    ### @brief バインドしている Unit 番号を返す．
+    ###
+    ### 普通はレジスタだが Load Unit の場合がある．
     @property
     def unit_id(self) :
         return self.__unit_id
@@ -328,9 +328,7 @@ class DFG :
     ### @param[in] i_id 入力番号
     def make_memsrc(self, i_id) :
         id = len(self.__node_list)
-        block_id = self.__imem_layout.block_id(i_id)
-        bank_id = self.__imem_layout.bank_id(i_id)
-        offset = self.__imem_layout.offset(i_id)
+        block_id, bank_id, offset = self.__imem_layout.decode(i_id)
         node = MemSrcNode(id, block_id, bank_id, offset)
         self.__node_list.append(node)
         self.__memsrcnode_list.append(node)
@@ -341,9 +339,7 @@ class DFG :
     ### @param[in] src 入力ソース
     def make_memsink(self, o_id, src) :
         id = len(self.__node_list)
-        block_id = self.__omem_layout.block_id(o_id)
-        bank_id = self.__omem_layout.bank_id(o_id)
-        offset = self.__omem_layout.offset(o_id)
+        block_id, bank_id, offset = self.__omem_layout.decode(o_id)
         node = MemSinkNode(id, block_id, bank_id, offset, src)
         self.__node_list.append(node)
         self.__memsinknode_list.append(node)
@@ -378,27 +374,32 @@ class DFG :
     ### @brief 全ノードのリストを返す．
     @property
     def node_list(self) :
-        return self.__node_list
+        for node in self.__node_list :
+            yield node
 
     ### @brief メモリソースノードのリストを返す．
     @property
     def memsrcnode_list(self) :
-        return self.__memsrcnode_list
+        for node in self.__memsrcnode_list :
+            yield node
 
     ### @brief メモリシンクノードのリストを返す．
     @property
     def memsinknode_list(self) :
-        return self.__memsinknode_list
+        for node in self.__memsinknode_list :
+            yield node
 
     ### @brief OP1ノードのリストを返す．
     @property
     def op1node_list(self) :
-        return self.__op1node_list
+        for node in self.__op1node_list :
+            yield node
 
     ### @brief OP2ノードのリストを返す．
     @property
     def op2node_list(self) :
-        return self.__op2node_list
+        for node in self.__op2node_list :
+            yield node
 
     ### @brief 総ステップ数を得る．
     ###
@@ -433,8 +434,9 @@ class DFG :
     ### 事前に eval_resource() を呼ぶ必要がある．
     @property
     def var_list(self) :
-        # コピーを渡す．
-        return list(self.__var_list)
+        # 実際にはジェネレータを返す．
+        for var in self.__var_list :
+            yield var
 
     ### @brief リソース量の見積もりを行う．
     ###
@@ -478,7 +480,7 @@ class DFG :
             # （＝同じバンク)
             key = (node.block_id, node.offset, step)
             if key not in memvar_map :
-                var = Var(node, step)
+                var = Var(node)
                 memvar_map[key] = var
                 self.__var_list.append(var)
             else :
@@ -490,7 +492,7 @@ class DFG :
                 key = (inode.block_id, inode.offset, inode.cstep)
                 var = memvar_map[key]
                 var.add_tgt_id(node.id, node.cstep)
-            ovar = Var(node, node.cstep)
+            ovar = Var(node)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
@@ -499,7 +501,7 @@ class DFG :
             for inode in node.fanin_list :
                 var = opvar_map[inode.id]
                 var.add_tgt_id(node.id, node.cstep)
-            ovar = Var(node, node.cstep)
+            ovar = Var(node)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
@@ -511,8 +513,7 @@ class DFG :
 
         # OP1ノードは一対一
         for node in self.op1node_list :
-            step = node.cstep
-            var = Var(node, step)
+            var = Var(node)
             self.__var_list.append(var)
             node.attach_var(var)
 
@@ -542,6 +543,52 @@ class DFG :
             if max_n < n :
                 max_n = n
         self.__reg_num = max_n
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] ivals 入力の値のリスト
+    ### @return 出力値を格納した辞書を返す．
+    ###
+    ### ivals は ivals[x] で値が取得できればなんでもよい．
+    def simulate(self, ivals) :
+        ovals = dict()
+        val_dict = dict()
+
+        for node in self.memsrcnode_list :
+            block_id = node.block_id
+            bank_id = node.bank_id
+            offset = node.offset
+            addr = self.__imem_layout.encode(block_id, bank_id, offset)
+            val = ivals[addr]
+            val_dict[node.id] = val
+
+        for node in self.op1node_list :
+            val = 0
+            for i, inode in enumerate(node.fanin_list) :
+                assert inode.id in val_dict
+                ival = val_dict[inode.id]
+                w = node.weight_list[i]
+                val += ival * w
+            val_dict[node.id] = val
+
+        for node in self.op2node_list :
+            val = 0
+            for i, inode in enumerate(node.fanin_list) :
+                assert inode.id in val_dict
+                ival = val_dict[inode.id]
+                val += ival
+            val_dict[node.id] = val
+
+        for node in self.memsinknode_list :
+            inode = node.src
+            assert inode.id in val_dict
+            val = val_dict[inode.id]
+            block_id = node.block_id
+            bank_id = node.bank_id
+            offset = node.offset
+            addr = self.__omem_layout.encode(block_id, bank_id, offset)
+            ovals[addr] = val
+
+        return ovals
 
 
 ### @brief DFG を作る

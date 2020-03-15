@@ -19,15 +19,19 @@ class MemLayout :
     def __init__(self, memory_size, block_num, bank_size, method = 1) :
         self.__memory_size = memory_size
         self.__block_num = block_num
-        self.__block_size = (memory_size + block_num - 1) // block_num
         self.__bank_size = bank_size
+        block_size = (memory_size + block_num - 1) // block_num
+        # block_size は bank_size の倍数にする．
+        self.__block_size = ((block_size + bank_size - 1) // bank_size) * bank_size
         self.__method = method
         if self.__method == 2 :
             self.__slice_size = self.__bank_size * self.__block_num
-        #print('memory_size = {}'.format(self.__memory_size))
-        #print('block_num   = {}'.format(self.__block_num))
-        #print('block_size  = {}'.format(self.__block_size))
-        #print('bank_size   = {}'.format(self.__bank_size))
+        debug = False
+        if debug :
+            print('memory_size = {}'.format(self.__memory_size))
+            print('block_num   = {}'.format(self.__block_num))
+            print('block_size  = {}'.format(self.__block_size))
+            print('bank_size   = {}'.format(self.__bank_size))
 
     ### @brief ブロック番号を返す．
     ### @param[in] i_id アドレス
@@ -59,6 +63,19 @@ class MemLayout :
         else :
             assert False
 
+    ### @brief 番地からブロック番号，バンク番号，オフセットを返す．
+    def decode(self, addr) :
+        return self.block_id(addr), self.bank_id(addr), self.offset(addr)
+
+    ### @brief ブロック番号，バンク番号，オフセットから番地を返す．
+    def encode(self, block_id, bank_id, offset) :
+        if self.__method == 1 :
+            return block_id * self.__block_size + bank_id * self.__bank_size + offset
+        elif self.__method == 2:
+            return block_id * self.__bank_size + bank_id * self.__slice_size + offset
+        else :
+            assert False
+
 
 if __name__ == '__main__' :
     import sys
@@ -74,3 +91,8 @@ if __name__ == '__main__' :
             print('Method: {}'.format(method))
             for addr in range(1500) :
                 print('{:04d}: ({}, {}, {})'.format(addr, mem_layout.block_id(addr), mem_layout.bank_id(addr), mem_layout.offset(addr)))
+                block_id, bank_id, offset = mem_layout.decode(addr)
+                addr1 = mem_layout.encode(block_id, bank_id, offset)
+                if addr1 != addr :
+                    print('Error: addr1 = {}'.format(addr1))
+                assert addr == addr1
