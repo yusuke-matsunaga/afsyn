@@ -17,7 +17,7 @@ class MuxSpec :
         self.__src_dict = dict()
 
     ### @brief 入力を追加する．
-    ### @param[in] src_id ソースの演算器番号
+    ### @param[in] src ソースのユニット
     ### @param[in] cstep コントロールステップ
     def add_src(self, src, cstep) :
         src_id = src.id
@@ -120,7 +120,7 @@ class MemoryBlock :
         self.__block_id = block_id
         self.__bank_dict = dict()
         self.__cond_dict = dict()
-        self.__ivals = dict()
+        self.__vals = dict()
 
     ### @brief ブロック番号を返す．
     @property
@@ -154,17 +154,19 @@ class MemoryBlock :
     ### @brief 値を設定する．
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    ### @param[in] ival 値
-    def set_ival(self, bank_id, offset, ival) :
+    ### @param[in] val 値
+    def set_val(self, bank_id, offset, val) :
         key = bank_id, offset
-        self.__ivals[key] = ival
+        self.__vals[key] = val
+        print('set_val[{}:{}:{}] = {}'.format(self.block_id, bank_id, offset, val))
 
     ### @brief 値を取得する．
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def get_ival(self, bank_id, offset) :
+    def get_val(self, bank_id, offset) :
         key = bank_id, offset
-        return self.__ivals[key]
+        print('get_val[{}:{}:{}] = {}'.format(self.block_id, bank_id, offset, self.__vals[key]))
+        return self.__vals[key]
 
 
 ### @brief ロードユニット
@@ -178,7 +180,7 @@ class LoadUnit(Unit) :
         super().__init__(id, 0)
         self.__block = mem_block
         self.__offset = offset
-        self.__val = None
+        self.__value = None
 
     ### @brief ロード条件を追加する．
     def add_cond(self, cstep, bank_id) :
@@ -206,17 +208,26 @@ class LoadUnit(Unit) :
     def bank_dict(self) :
         return self.__block.bank_dict
 
+    ### @brief スケジュールに従ってロードする．
+    def load(self, step) :
+        if step in self.__block.bank_dict :
+            print('LoadUnit(#{}).load({})'.format(self.id, step))
+            bank_id = self.__block.bank_dict[step]
+            val = self.__block.get_val(bank_id, self.offset)
+            self.__value = val
+            print('  value = {}'.format(self.__value))
+
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        if step in self.__block.bank_dict :
-            bank_id = self.__block.bank_dict[step]
-            val = self.__block.read_val(bank_id)
-            self.__val = extract(val, offset)
+        print('  LoadUnit(#{}).eval_on({})'.format(self.id, step))
+        print('  LoadUnit(#{}).value = {}'.format(self.id, self.__value))
+        return self.__value
 
     ### @brief シミュレーション結果を返す．
+    @property
     def value(self) :
-        return self.__val
+        return self.__value
 
 
 ### @brief ストアユニット
@@ -251,13 +262,21 @@ class StoreUnit(Unit) :
     def bank_dict(self) :
         return self.__block.bank_dict
 
+    ### @brief スケジュールに従ってストアする．
+    ### @param[in] step
+    def store(self, step) :
+        if step in self.bank_dict :
+            print('StoreUnit(#{}).store({})'.format(self.id, step))
+            src = self.mux_spec(0).src(step)
+            val = src.value
+            bank_id = self.bank_dict[step]
+            self.__block.set_val(bank_id, 0, val)
+
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        if step in self.bank_dict :
-            bank_id = self.bank_dict[step]
-            val = self.mux_spec(0).src(step)
-            self.__block.set_ival(bank_id, 0, val)
+        print('StoreUnit(#{}).eval_on({})'.format(self.id, step))
+
 
 
 ### @brief OP1ユニット
@@ -299,15 +318,25 @@ class Op1Unit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
+        print('  Op1Unit(#{}).eval_on({})'.format(self.id, step))
         val = 0
         for i in range(self.input_num) :
             mux = self.mux_spec(i)
             src = mux.src(step)
             if src is None :
                 break
-            val += src.value()
-        else :
-            self.__value = val
+            print('    #{}\'th src = #{}'.format(i, src.id))
+            if step in self.__inv_cond_list[i] :
+                val -= src.value
+            else :
+                val += src.value
+        self.__value = val
+        return self.__value
+
+    ### @brief シミュレーション結果を返す．
+    @property
+    def value(self) :
+        return self.__value
 
 
 ### @brief OP2ユニット
@@ -351,18 +380,24 @@ class Op2Unit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        val = 0
-        for i in range(self.input_num) :
-            mux = self.mux_spec(i)
-            src = mux.src(step)
-            if src is None :
-                break
-            val += src.value()
-        else :
-            self.__value = val
-            assert step in self.__bias_map
+        print('  Op2Unit(#{}).eval_on({})'.format(self.id, step))
+        if step in self.__bias_map :
+            val = 0
+            for i in range(self.input_num) :
+                mux = self.mux_spec(i)
+                src = mux.src(step)
+                if src is None :
+                    continue
+                print('    #{}: src = #{}'.format(i, src.id))
+                val += src.value
             val += self.__bias_map[step]
             self.__value = val
+        return self.__value
+
+    ### @brief シミュレーション結果を返す．
+    @property
+    def value(self) :
+        return self.__value
 
 
 ### @brief レジスタの仕様を表すクラス
@@ -377,7 +412,7 @@ class RegUnit(Unit) :
         self.__var_list = list()
         self.__last_step = 0
         self.__cond_map = dict()
-        #self.__src_map = dict()
+        self.__src_map = dict()
         self.__value = None
 
     ### @brief ソースの情報を追加する．
@@ -386,12 +421,14 @@ class RegUnit(Unit) :
         self.__var_list.append(var)
         if self.__last_step < var.end :
             self.__last_step = var.end
-        var.bind(self.id)
+        var.bind(self)
         cstep = var.start
-        op_id = node.unit_id
-        if op_id not in self.__cond_map :
-            self.__cond_map[op_id] = list()
-        self.__cond_map[op_id].append(cstep)
+        op = node.unit
+        if op.id not in self.__cond_map :
+            self.__cond_map[op.id] = list()
+        self.__cond_map[op.id].append(cstep)
+        assert cstep not in self.__src_map
+        self.__src_map[cstep] = op
 
     ### @brief レジスタのときに True を返す．
     def is_reg_unit(self) :
@@ -414,7 +451,7 @@ class RegUnit(Unit) :
 
     ### @brief 同じソースがあったら True を返す．
     def has_samesrc(self, node) :
-        return node.unit_id in self.__cond_map
+        return node.unit.id in self.__cond_map
 
     ### @brief ソースの条件の辞書を返す．
     ###
@@ -426,14 +463,26 @@ class RegUnit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        pass
+        if step in self.__src_map :
+            print('RegUnit(#{}).eval_on({})'.format(self.id, step))
+            src = self.__src_map[step]
+            val = src.eval_on(step)
+            self.__value = val
+            print('RegUnit(#{}).value = {}'.format(self.id, self.__value))
+
+    ### @brief シミュレーション結果を返す．
+    @property
+    def value(self) :
+        return self.__value
 
 
 ### @brief 演算器を管理するマネージャ
 class UnitMgr :
 
     ### @brief 初期化
-    def __init__(self) :
+    def __init__(self, imem_layout, omem_layout) :
+        self.__imem_layout = imem_layout
+        self.__omem_layout = omem_layout
         self.__unit_list = list()
         self.__lm_dict = dict()
         self.__lu_list = list()
@@ -446,42 +495,87 @@ class UnitMgr :
     ### @brief 全てのユニットのリストを返す．
     @property
     def unit_list(self) :
-        return self.__unit_list
+        for unit in self.__unit_list :
+            yield unit
+
+    ### @brief ユニット番号からユニットを取り出す．
+    def unit(self, unit_id) :
+        return self.__unit_list[unit_id]
 
     ### @brief Load Memory のリストを返す．
     @property
     def load_memory_list(self) :
         return self.__lm_dict.values()
 
+    ### @brief block_id から Load Memory を取り出す．
+    def load_memory(self, block_id) :
+        return self.__lm_dict[block_id]
+
     ### @brief Load Unit のリストを返す．
     @property
     def load_unit_list(self) :
-        return self.__lu_list
+        for unit in self.__lu_list :
+            yield unit
 
     ### @brief Store Memory のリストを返す．
     @property
     def store_memory_list(self) :
         return self.__sm_dict.values()
 
+    ### @brief block_id から Store Memory を取り出す．
+    def store_memory(self, block_id) :
+        return self.__sm_dict[block_id]
+
     ### @brief Store Unit のリストを返す．
     @property
     def store_unit_list(self) :
-        return self.__su_list
+        for unit in self.__su_list :
+            yield unit
+
+    ### @brief OP1 Unit の数を返す．
+    @property
+    def op1_num(self) :
+        return len(self.__op1_list)
+
+    ### @brief OP2 Unit を返す．
+    def op1(self, pos) :
+        return self.__op1_list[pos]
 
     ### @brief OP1 Unit のリストを返す．
     @property
     def op1_list(self) :
-        return self.__op1_list
+        for unit in self.__op1_list :
+            yield unit
+
+    ### @brief OP2 Unit の数を返す．
+    @property
+    def op2_num(self) :
+        return len(self.__op2_list)
+
+    ### @brief OP2 Unit を返す．
+    def op2(self, pos) :
+        return self.__op2_list[pos]
 
     ### @brief OP2 Unit のリストを返す．
     @property
     def op2_list(self) :
-        return self.__op2_list
+        for unit in self.__op2_list :
+            yield unit
+
+    ### @brief レジスタの数を返す．
+    @property
+    def reg_num(self) :
+        return len(self.__reg_list)
+
+    ### @brief レジスタを返す．
+    def reg(self, pos) :
+        return self.__reg_list[pos]
 
     ### @brief レジスタのリストを返す．
     @property
     def reg_list(self) :
-        return self.__reg_list
+        for reg in self.__reg_list :
+            yield reg
 
     ### @brief Load Unit を作る．
     ### @param[in] block_id ブロック番号
@@ -550,21 +644,39 @@ class UnitMgr :
         return reg
 
     ### @brief 動作シミュレーションを行う．
-    ### @param[in] dfg 対象のグラフ
     ### @param[in] ivals 入力値
     ### @return 出力値を納めた辞書を返す．
-    def simulate(self, dfg, ivals) :
-        # 入力値を load memory にセットする．
+    def simulate(self, ivals, oaddr_list, total_step) :
+        # 入力値を load memory にセットする．n
+        for addr, val in ivals.items() :
+            block_id, bank_id, offset = self.__imem_layout.decode(addr)
+            lm = self.load_memory(block_id)
+            lm.set_val(bank_id, offset, val)
 
-        for step in range(dfg.total_step) :
-            for unit in self.__unit_list :
+        for step in range(total_step) :
+            for unit in self.load_unit_list :
+                unit.load(step)
+
+            for unit in self.reg_list :
                 unit.eval_on(step)
 
+            for unit in self.store_unit_list :
+                unit.store(step)
+
         # 出力値を store memory から取り出す．
+        ovals = dict()
+        for addr in oaddr_list :
+            block_id, bank_id, offset = self.__omem_layout.decode(addr)
+            sm = self.store_memory(block_id)
+            val = sm.get_val(bank_id, offset)
+            print('mem[{}] = {}'.format(addr, val))
+            ovals[addr] = val
+
+        return ovals
 
     ### @brief 内容を出力する．
     def print(self, fout) :
-        # Load Unit の内容を出力する．
+        # Load Memory の内容を出力する．
         print('Load Memory', file = fout)
         for lm in self.load_memory_list :
             print('Load Memory#{}'.format(lm.block_id), file = fout)
@@ -573,6 +685,13 @@ class UnitMgr :
                 for cond in cond_list :
                     print(' {}'.format(cond), end = '', file = fout)
                 print(')', file = fout)
+
+        # Load Unit の内容を出力する．
+        print('Load Unit', file = fout)
+        for lu in self.load_unit_list :
+            print('Load Unit#{}: [{}-{}]'.format(lu.id, lu.block_id, lu.offset), file = fout)
+            for cstep, bank_id in lu.bank_dict.items() :
+                print('  @{}: bank#{}'.format(cstep, bank_id), file = fout)
 
         # Op1 Unit の内容を出力する．
         print('Op1 Unit', file = fout)

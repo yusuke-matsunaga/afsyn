@@ -7,6 +7,7 @@
 ### Copyright (C) 2020 Yusuke Matsunaga
 ### All rights reserved.
 
+from unit import Unit
 
 ### @brief DFG のノードを表すクラス
 ###
@@ -22,22 +23,22 @@ class Node :
         self.__fanin_list = list(fanin_list)
         self.__cstep = -1
         self.__var = None
-        self.__unit_id = -1
+        self.__unit = None
 
     ### @brief Unit に割り当てる．
-    ### @param[in] unit_id ユニット番号
-    def bind(self, unit_id) :
-        self.__unit_id = unit_id
+    ### @param[in] unit ユニット
+    def bind(self, unit) :
+        self.__unit = unit
 
     ### @brief ID番号を返す．
     @property
     def id(self) :
         return self.__id
 
-    ### @brief 対応する Load Unit の番号を返す．
+    ### @brief 対応する Unit を返す．
     @property
-    def unit_id(self) :
-        return self.__unit_id
+    def unit(self) :
+        return self.__unit
 
     ### @brief ファンインを返す．
     def fanin(self, pos) :
@@ -242,7 +243,16 @@ class Op1Node(OpNode) :
             assert inode.id in val_dict
             ival = val_dict[inode.id]
             w = self.weight(i)
-            val += ival * w
+            if w == 0.125 :
+                val += ival
+            elif w == -0.125 :
+                val += ~ival
+            elif w == 0.25 :
+                val += ival
+                val += ival
+            else :
+                print('w = {}'.format(w))
+                assert False
         val_dict[self.id] = val
 
 
@@ -273,12 +283,24 @@ class Op2Node(OpNode) :
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
-    def simulate(self, val_dict) :
+    def simulate0(self, val_dict) :
         val = 0
         for i, inode in enumerate(self.fanin_list) :
             assert inode.id in val_dict
             ival = val_dict[inode.id]
             val += ival
+            val *= 0.125
+        val_dict[self.id] = val
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] val_dict ノードの値を格納する辞書
+    def simulate(self, val_dict) :
+        val = self.bias
+        for i, inode in enumerate(self.fanin_list) :
+            assert inode.id in val_dict
+            ival = val_dict[inode.id]
+            val += ival
+        val *= 0.125
         val_dict[self.id] = val
 
 
@@ -292,7 +314,7 @@ class Var :
         self.__tgt_id_list = []
         self.__start = src.cstep
         self.__end = -1
-        self.__unit_id = -1
+        self.__unit = None
 
     ### @brief ターゲットIDを追加する．
     ### @param[in] tgt_id 追加するターゲットID
@@ -346,19 +368,20 @@ class Var :
         else :
             return None
 
-    ### @brief バインドしている Unit 番号を返す．
+    ### @brief バインドしている Unit を返す．
     ###
     ### 普通はレジスタだが Load Unit の場合がある．
     @property
-    def unit_id(self) :
-        return self.__unit_id
+    def unit(self) :
+        return self.__unit
 
     ### @brief Unit に割り当てる．
-    ### @param[in] unit_id レジスタID
+    ### @param[in] unit ユニット
     ###
     ### 普通はレジスタだが Load Unit の場合がある．
-    def bind(self, unit_id) :
-        self.__unit_id = unit_id
+    def bind(self, unit) :
+        assert isinstance(unit, Unit)
+        self.__unit = unit
 
     ### @brief 比較演算子
     def __lt__(self, other) :
@@ -391,6 +414,16 @@ class DFG :
         self.__op2_num = 0
         self.__reg_num = 0
         self.__var_list = []
+
+    ### @brief 入力用メモリレイアウトを返す．
+    @property
+    def imem_layout(self) :
+        return self.__imem_layout
+
+    ### @brief 出力用メモリレイアウトを返す．
+    @property
+    def omem_layout(self) :
+        return self.__omem_layout
 
     ### @brief メモリソースノードを作る．
     ### @param[in] i_id 入力番号

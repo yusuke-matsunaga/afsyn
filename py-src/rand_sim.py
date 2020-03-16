@@ -14,8 +14,9 @@ if __name__ == '__main__' :
     import random
     import argparse
     from op import Op
-    from dfg import make_graph
+    from scheduling import scheduling
     from mem_layout import MemLayout
+    from binder import bind
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--count', type = int, default = 1000)
@@ -48,14 +49,25 @@ if __name__ == '__main__' :
     oblock_num = 8
     obank_size = 1
     omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
-    dfg = make_graph(op_list, imem_layout, omem_layout)
+    oaddr_list = [ i for i in range(omemory_size) ]
+
+    op_limit = 16
+    s_method = 2
+    dfg = scheduling(op_list, op_limit, imem_layout, omem_layout, s_method)
+    unit_mgr = bind(dfg)
 
     for c in range(args.count) :
-        ivals = [ random.randrange(-128, 128) for j in range(mem_size) ]
+        ivals = dict()
+        for i in range(mem_size) :
+            ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
         ovals2 = dfg.simulate(ivals)
+        ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step)
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
-            print('O#{}: {}'.format(i, val))
+            val3 = ovals3[i]
+            print('O#{}:'.format(i))
             if val2 != val :
-                print('Error')
+                print('Error: val = {}, val2 = {}'.format(val, val2))
+            if val3 != val :
+                print('Error: val = {}, val3 = {}'.format(val, val3))

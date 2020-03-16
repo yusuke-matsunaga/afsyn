@@ -71,9 +71,9 @@ def reg_bind2(dfg, unit_mgr, var_list) :
             if reg.has_samesrc(var.src) :
                 edge_list.append( (reg.reg_id, i, 1) )
 
-    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), nvars, len(edge_list)))
+    print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
     # 2部グラフの最大マッチングを求める．
-    match = bipartite_matching(len(unit_mgr.reg_list), nvars, edge_list)
+    match = bipartite_matching(unit_mgr.reg_num, nvars, edge_list)
     print('matching end. total {} matches'.format(len(match)))
 
     bound_vars = set()
@@ -81,7 +81,7 @@ def reg_bind2(dfg, unit_mgr, var_list) :
 
     # マッチング結果に基づいて割り当てを行う．
     for reg_id, var_id in match :
-        reg = unit_mgr.reg_list[reg_id]
+        reg = unit_mgr.reg(reg_id)
         var = var_list[var_id]
         reg.add_src(var.src)
         bound_vars.add(var_id)
@@ -103,14 +103,14 @@ def reg_bind2(dfg, unit_mgr, var_list) :
                 continue
             edge_list.append( (reg.reg_id, i, 1) )
 
-    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), nvars, len(edge_list)))
+    print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
     # 2部グラフの最大マッチングを求める．
-    match = bipartite_matching(len(unit_mgr.reg_list), nvars, edge_list)
+    match = bipartite_matching(unit_mgr.reg_num, nvars, edge_list)
     print('matching end. total {} matches'.format(len(match)))
 
     # マッチング結果に基づいて割り当てを行う．
     for reg_id, var_id in match :
-        reg = unit_mgr.reg_list[reg_id]
+        reg = unit_mgr.reg(reg_id)
         var = var_list[var_id]
         reg.add_src(var.src)
         bound_vars.add(var_id)
@@ -137,8 +137,7 @@ def bind_register(dfg, unit_mgr) :
         if var.start + 1 == var.end :
             inode = var.src
             if inode.is_memsrc or inode.is_op2 :
-                unit_id = inode.unit_id
-                var.bind(unit_id)
+                var.bind(inode.unit)
             else :
                 var_list.append(var)
         else :
@@ -230,13 +229,13 @@ def alloc_selecter(dfg, unit_mgr) :
         src_list = list()
         for i, inode in enumerate(node.fanin_list) :
             var = inode.var
-            unit = unit_mgr.unit_list[var.unit_id]
-            w = node.weight_list[i]
+            unit = var.unit
+            w = node.weight(i)
             src_list.append( (unit, w) )
-        op_id = node.unit_id
-        if op_id not in src_list_map_dict :
-            src_list_map_dict[op_id] = dict()
-        src_list_map_dict[op_id][node.cstep] = src_list
+        op = node.unit
+        if op.id not in src_list_map_dict :
+            src_list_map_dict[op.id] = dict()
+        src_list_map_dict[op.id][node.cstep] = src_list
 
     for op in unit_mgr.op1_list :
         # cstep をキーにしたファンインのレジスタ番号のリストの辞書
@@ -266,27 +265,27 @@ def alloc_selecter(dfg, unit_mgr) :
         src_list = list()
         for inode in node.fanin_list :
             var = inode.var
-            unit = unit_mgr.unit_list[var.unit_id]
+            unit = var.unit
             assert not unit.is_store_unit()
             src_list.append( (unit, 1) )
-        op_id = node.unit_id
-        if op_id not in src_list_map_dict :
-            src_list_map_dict[op_id] = dict()
-            bias_map_dict[op_id] = dict()
-        src_list_map_dict[op_id][node.cstep] = src_list
-        bias_map_dict[op_id][node.cstep] = node.bias
+        op = node.unit
+        if op.id not in src_list_map_dict :
+            src_list_map_dict[op.id] = dict()
+            bias_map_dict[op.id] = dict()
+        src_list_map_dict[op.id][node.cstep] = src_list
+        bias_map_dict[op.id][node.cstep] = node.bias
 
     for op in unit_mgr.op2_list :
         assert op.id in src_list_map_dict
         # ファンインのOP1番号のリストのリスト
-        src_list_map = src_list_map_dict[op_id]
+        src_list_map = src_list_map_dict[op.id]
         # 入力のバインディングを行う．
         sel_src_list = input_binding(src_list_map, 15)
         n = len(sel_src_list)
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src, inv) in sel_src.items() :
                 op.add_src(i, src, cstep)
-        for cstep, bias in bias_map_dict[op_id].items() :
+        for cstep, bias in bias_map_dict[op.id].items() :
             op.add_bias(cstep, bias)
 
         if debug :
@@ -303,7 +302,7 @@ def alloc_selecter(dfg, unit_mgr) :
 
 ### @brief バインディングを行う．
 def bind(dfg) :
-    unit_mgr = UnitMgr()
+    unit_mgr = UnitMgr(dfg.imem_layout, dfg.omem_layout)
 
     # Load Unit は一意に割り当てられる．
     lu_map = dict()
@@ -314,7 +313,7 @@ def bind(dfg) :
         else :
             lu = unit_mgr.new_load_unit(node.block_id, node.offset)
             lu_map[key] = lu
-        node.bind(lu.id)
+        node.bind(lu)
         lu.add_cond(node.cstep, node.bank_id)
 
     # 演算器はとりあえずナイーブに割り当てる．
@@ -322,20 +321,20 @@ def bind(dfg) :
     for node in dfg.op1node_list :
         step = node.cstep
         pos = op1_count[step]
-        while len(unit_mgr.op1_list) <= pos :
+        while unit_mgr.op1_num <= pos :
             unit_mgr.new_op1_unit(16)
-        op = unit_mgr.op1_list[pos]
-        node.bind(op.id)
+        op = unit_mgr.op1(pos)
+        node.bind(op)
         op1_count[step] += 1
 
     op2_count = [ 0 for i in range(dfg.total_step) ]
     for node in dfg.op2node_list :
         step = node.cstep
         pos = op2_count[step]
-        while len(unit_mgr.op2_list) <= pos :
+        while unit_mgr.op2_num <= pos :
             unit_mgr.new_op2_unit(15)
-        op = unit_mgr.op2_list[pos]
-        node.bind(op.id)
+        op = unit_mgr.op2(pos)
+        node.bind(op)
         op2_count[step] += 1
 
     # レジスタ割り当てを行う．
@@ -349,10 +348,10 @@ def bind(dfg) :
         else :
             su = unit_mgr.new_store_unit(node.block_id)
             su_map[node.block_id] = su
-        node.bind(su.id)
+        node.bind(su)
         inode = node.src
         var = inode.var
-        src = unit_mgr.unit_list[var.unit_id]
+        src = var.unit
         su.add_src(src, node.cstep, node.bank_id)
 
     # セレクタの生成を行う．
