@@ -39,10 +39,15 @@ class Node :
     def unit_id(self) :
         return self.__unit_id
 
+    ### @brief ファンインを返す．
+    def fanin(self, pos) :
+        return fself.__fanin_list[pos]
+
     ### @brief ファンインノードのリスト
     @property
     def fanin_list(self) :
-        return self.__fanin_list
+        for inode in self.__fanin_list :
+            yield inode
 
     ### @brief メモリソースノードのとき True を返す．
     @property
@@ -90,14 +95,21 @@ class MemNode(Node) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] addr アドレス
     ### @param[in] block_id ブロック番号
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def __init__(self, id, block_id, bank_id, offset) :
+    def __init__(self, id, addr, block_id, bank_id, offset) :
         super().__init__(id, [])
+        self.__addr = addr
         self.__block_id = block_id
         self.__bank_id = bank_id
         self.__offset = offset
+
+    ### @brief アドレスを返す．
+    @property
+    def addr(self) :
+        return self.__addr
 
     ### @brief ブロック番号を返す．
     @property
@@ -120,16 +132,25 @@ class MemSrcNode(MemNode) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] addr アドレス
     ### @param[in] block_id ブロック番号
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
-    def __init__(self, id, block_id, bank_id, offset) :
-        super().__init__(id, block_id, bank_id, offset)
+    def __init__(self, id, addr, block_id, bank_id, offset) :
+        super().__init__(id, addr, block_id, bank_id, offset)
 
     ### @brief メモリソースノードのとき True を返す．
     @property
     def is_memsrc(self) :
         return True
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] ivals 入力値を収めた辞書
+    ### @param[in] val_dict ノードの値を格納する辞書
+    def simulate(self, ivals, val_dict) :
+        addr = self.addr
+        val = ivals[addr]
+        val_dict[self.id] = val
 
 
 ### @brief メモリシンクノード
@@ -137,12 +158,13 @@ class MemSinkNode(MemNode) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] addr アドレス
     ### @param[in] block_id ブロック番号
     ### @param[in] bank_id バンク番号
     ### @param[in] offset オフセット
     ### @param[in] src 入力ソース
-    def __init__(self, id, block_id, bank_id, offset, src) :
-        super().__init__(id, block_id, bank_id, offset)
+    def __init__(self, id, addr, block_id, bank_id, offset, src) :
+        super().__init__(id, addr, block_id, bank_id, offset)
         self.__src = src
 
     ### @brief メモリシンクノードのとき True を返す．
@@ -155,6 +177,16 @@ class MemSinkNode(MemNode) :
     def src(self) :
         return self.__src
 
+    ### @brief シミュレーションを行う．
+    ### @param[in] val_dict ノードの値を格納する辞書
+    ### @param[in] ovals 出力値を収める辞書
+    def simulate(self, val_dict, ovals) :
+        inode = self.src
+        assert inode.id in val_dict
+        val = val_dict[inode.id]
+        addr = self.addr
+        ovals[addr] = val
+
 
 ### @brief 演算ノード
 class OpNode(Node) :
@@ -162,48 +194,9 @@ class OpNode(Node) :
     ### @brief 初期化
     ### @param[in] id ID番号
     ### @param[in] fanin_list ファンインノードのリスト
-    ### @param[in] level レベル(1 or 2)
-    ### @param[in] weight_list 重みのリスト
-    ###
-    ### level == 2 のときは weight_list はない．
-    def __init__(self, id, fanin_list, level, weight_list = List()) :
+    def __init__(self, id, fanin_list) :
         super().__init__(id, fanin_list)
-        self.__level = level
-        self.__weight_list = list(weight_list)
         self.__fanout = None
-        bias = 0
-        if self.is_op1 :
-            for w in self.__weight_list :
-                if w < 0 :
-                    ans += 1
-        else :
-            for inode in self.fanin_list :
-                ans += inode.bias
-
-    ### @brief OP1ノードのとき True を返す．
-    @property
-    def is_op1(self) :
-        return self.__level == 1
-
-    ### @brief OP2ノードのとき True を返す．
-    @property
-    def is_op2(self) :
-        return self.__level == 2
-
-    ### @brief レベルを返す．
-    @property
-    def level(self) :
-        return self.__level
-
-    ### @brief 重みのリストを返す．
-    @property
-    def weight_list(self) :
-        return self.__weight_list
-
-    ### @brief 負の重みを持つ入力数
-    @property
-    def bias(self) :
-        return ans
 
     ### @brief ファンアウトをセットする．
     def set_fanout(self, onode) :
@@ -213,6 +206,80 @@ class OpNode(Node) :
     @property
     def fanout(self) :
         return self.__fanout
+
+
+### @brief タイプ1演算ノード
+class Op1Node(OpNode) :
+
+    ### @brief 初期化
+    ### @param[in] id ID番号
+    ### @param[in] fanin_list ファンインノードのリスト
+    ### @param[in] weight_list 重みのリスト
+    def __init__(self, id, fanin_list, weight_list) :
+        super().__init__(id, fanin_list)
+        self.__weight_list = list(weight_list)
+
+    ### @brief OP1ノードのとき True を返す．
+    @property
+    def is_op1(self) :
+        return True
+
+    ### @brief 重みを返す．
+    def weight(self, pos) :
+        return self.__weight_list[pos]
+
+    ### @brief 重みのリストを返す．
+    @property
+    def weight_list(self) :
+        for w in self.__weight_list :
+            yield w
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] val_dict ノードの値を格納する辞書
+    def simulate(self, val_dict) :
+        val = 0
+        for i, inode in enumerate(self.fanin_list) :
+            assert inode.id in val_dict
+            ival = val_dict[inode.id]
+            w = self.weight(i)
+            val += ival * w
+        val_dict[self.id] = val
+
+
+### @brief タイプ2演算ノード
+class Op2Node(OpNode) :
+
+    ### @brief 初期化
+    ### @param[in] id ID番号
+    ### @param[in] fanin_list ファンインノードのリスト
+    def __init__(self, id, fanin_list) :
+        super().__init__(id, fanin_list)
+        bias = 0
+        for inode in self.fanin_list :
+            for w in inode.weight_list :
+                if w < 0 :
+                    bias += 1
+        self.__bias = bias
+
+    ### @brief OP2ノードのとき True を返す．
+    @property
+    def is_op2(self) :
+        return True
+
+    ### @brief 負の重みを持つ入力数
+    @property
+    def bias(self) :
+        return self.__bias
+
+    ### @brief シミュレーションを行う．
+    ### @param[in] val_dict ノードの値を格納する辞書
+    def simulate(self, val_dict) :
+        val = 0
+        for i, inode in enumerate(self.fanin_list) :
+            assert inode.id in val_dict
+            ival = val_dict[inode.id]
+            val += ival
+        val_dict[self.id] = val
 
 
 ### @brief 変数を表すクラス
@@ -244,7 +311,8 @@ class Var :
     ### @brief ターゲットIDのリストを返す．
     @property
     def tgt_id_list(self) :
-        return self.__tgt_id_list
+        for tgt_id in self.__tgt_id_list :
+            yield tgt_id
 
     ### @brief 開始時刻を返す．
     @property
@@ -329,7 +397,7 @@ class DFG :
     def make_memsrc(self, i_id) :
         id = len(self.__node_list)
         block_id, bank_id, offset = self.__imem_layout.decode(i_id)
-        node = MemSrcNode(id, block_id, bank_id, offset)
+        node = MemSrcNode(id, i_id, block_id, bank_id, offset)
         self.__node_list.append(node)
         self.__memsrcnode_list.append(node)
         return node
@@ -340,25 +408,28 @@ class DFG :
     def make_memsink(self, o_id, src) :
         id = len(self.__node_list)
         block_id, bank_id, offset = self.__omem_layout.decode(o_id)
-        node = MemSinkNode(id, block_id, bank_id, offset, src)
+        node = MemSinkNode(id, o_id, block_id, bank_id, offset, src)
         self.__node_list.append(node)
         self.__memsinknode_list.append(node)
         return node
 
-    ### @brief 演算ノードを作る．
+    ### @brief タイプ1演算ノードを作る．
     ### @param[in] fanin_list ファンインノードのリスト
-    ### @param[in] level レベル(1 or 2)
     ### @param[in] weight_list 重みのリスト
-    def make_op(self, fanin_list, level, weight_list = None) :
+    def make_op1(self, fanin_list, weight_list) :
         id = len(self.__node_list)
-        node = OpNode(id, fanin_list, level, weight_list)
+        node = Op1Node(id, fanin_list, weight_list)
         self.__node_list.append(node)
-        if level == 1 :
-            self.__op1node_list.append(node)
-        elif level == 2 :
-            self.__op2node_list.append(node)
-        else :
-            assert False
+        self.__op1node_list.append(node)
+        return node
+
+    ### @brief タイプ2演算ノードを作る．
+    ### @param[in] fanin_list ファンインノードのリスト
+    def make_op2(self, fanin_list) :
+        id = len(self.__node_list)
+        node = Op2Node(id, fanin_list)
+        self.__node_list.append(node)
+        self.__op2node_list.append(node)
         return node
 
     ### @brief 入力のメモリレイアウトを返す．
@@ -554,29 +625,13 @@ class DFG :
         val_dict = dict()
 
         for node in self.memsrcnode_list :
-            block_id = node.block_id
-            bank_id = node.bank_id
-            offset = node.offset
-            addr = self.__imem_layout.encode(block_id, bank_id, offset)
-            val = ivals[addr]
-            val_dict[node.id] = val
+            node.simulate(ivals, val_dict)
 
         for node in self.op1node_list :
-            val = 0
-            for i, inode in enumerate(node.fanin_list) :
-                assert inode.id in val_dict
-                ival = val_dict[inode.id]
-                w = node.weight_list[i]
-                val += ival * w
-            val_dict[node.id] = val
+            node.simulate(val_dict)
 
         for node in self.op2node_list :
-            val = 0
-            for i, inode in enumerate(node.fanin_list) :
-                assert inode.id in val_dict
-                ival = val_dict[inode.id]
-                val += ival
-            val_dict[node.id] = val
+            node.simulate(val_dict)
 
         for node in self.memsinknode_list :
             inode = node.src
@@ -610,7 +665,7 @@ def make_graph(op_list, imem_layout, omem_layout) :
             else :
                 n = 1
             if l1_fanin_num + n >= 16 :
-                op_node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
+                op_node = dfg.make_op1(l1_fanin_list, l1_weight_list)
                 l2_fanin_list.append(op_node)
                 l1_fanin_list = []
                 l1_fanin_num = 0
@@ -620,9 +675,9 @@ def make_graph(op_list, imem_layout, omem_layout) :
             l1_fanin_num += n
 
         if l1_fanin_num > 0 :
-            op_node = dfg.make_op(l1_fanin_list, 1, l1_weight_list)
+            op_node = dfg.make_op1(l1_fanin_list, l1_weight_list)
             l2_fanin_list.append(op_node)
-        node = dfg.make_op(l2_fanin_list, 2)
+        node = dfg.make_op2(l2_fanin_list)
         for inode in l2_fanin_list :
             inode.set_fanout(node)
         onode = dfg.make_memsink(o_id, node)
