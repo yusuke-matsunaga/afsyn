@@ -311,18 +311,18 @@ class Var :
     ### @param[in] src_node ソースノード
     def __init__(self, src) :
         self.__src = src
-        self.__tgt_id_list = []
+        self.__tgt_list = []
         self.__start = src.cstep
         self.__end = -1
         self.__unit = None
 
     ### @brief ターゲットIDを追加する．
-    ### @param[in] tgt_id 追加するターゲットID
-    ### @param[in] end tgt_id の cstep
-    def add_tgt_id(self, tgt_id, end) :
-        self.__tgt_id_list.append(tgt_id)
-        if self.__end < end :
-            self.__end = end
+    ### @param[in] tgt 追加するターゲット
+    def add_tgt(self, tgt) :
+        self.__tgt_list.append(tgt)
+        cstep = tgt.cstep
+        if self.__end < cstep :
+            self.__end = cstep
         assert self.__start < self.__end
 
     ### @brief ソースノードを返す．
@@ -332,9 +332,9 @@ class Var :
 
     ### @brief ターゲットIDのリストを返す．
     @property
-    def tgt_id_list(self) :
-        for tgt_id in self.__tgt_id_list :
-            yield tgt_id
+    def tgt_list(self) :
+        for tgt in self.__tgt_list :
+            yield tgt
 
     ### @brief 開始時刻を返す．
     @property
@@ -591,42 +591,35 @@ class DFG :
                 var = memvar_map[key]
             node.attach_var(var)
 
+        # OP1ノードに対しては一対一で変数が対応する．
         for node in self.op1node_list :
             for inode in node.fanin_list :
+                # ファンインのノードの変数のターゲットを追加する．
                 key = (inode.block_id, inode.offset, inode.cstep)
                 var = memvar_map[key]
-                var.add_tgt_id(node.id, node.cstep)
+                var.add_tgt(node)
             ovar = Var(node)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
 
+        # OP2ノードに対しては一対一で変数が対応する．
         for node in self.op2node_list :
             for inode in node.fanin_list :
+                # ファンインのノードの変数のターゲットを追加する．
                 var = opvar_map[inode.id]
-                var.add_tgt_id(node.id, node.cstep)
+                var.add_tgt(node)
             ovar = Var(node)
             opvar_map[node.id] = ovar
             self.__var_list.append(ovar)
             node.attach_var(ovar)
 
+        # メモリシンクノード自体は変数を持たない．
+        # そのソースのターゲットを設定する．
         for node in self.memsinknode_list :
             inode = node.src
             var = opvar_map[inode.id]
-            var.add_tgt_id(node.id, node.cstep)
-
-        # OP1ノードは一対一
-        for node in self.op1node_list :
-            var = Var(node)
-            self.__var_list.append(var)
-            node.attach_var(var)
-
-        for node in self.op2node_list :
-            tgt_id = node.id
-            step = node.cstep
-            for inode in node.fanin_list :
-                var = inode.var
-                var.add_tgt_id(tgt_id, step)
+            var.add_tgt(node)
 
         # レジスタのリソース量の計算
         svar_list = sorted(self.__var_list)

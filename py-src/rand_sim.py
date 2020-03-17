@@ -44,7 +44,10 @@ if __name__ == '__main__' :
     bank_size = 32
     print('Block num: {}'.format(block_num))
     print('Bank Size: {}'.format(bank_size))
-    imem_layout = MemLayout(mem_size, block_num, bank_size)
+
+    bsize = block_num * bank_size
+    imemory_size = ((mem_size + bsize - 1) // bsize) * bsize
+    imem_layout = MemLayout(imemory_size, block_num, bank_size)
     omemory_size = len(op_list)
     oblock_num = 8
     obank_size = 1
@@ -55,10 +58,11 @@ if __name__ == '__main__' :
     s_method = 2
     dfg = scheduling(op_list, op_limit, imem_layout, omem_layout, s_method)
     unit_mgr = bind(dfg)
+    unit_mgr.print(sys.stdout)
 
     for c in range(args.count) :
         ivals = dict()
-        for i in range(mem_size) :
+        for i in range(imemory_size) :
             ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
         ovals2 = dfg.simulate(ivals)

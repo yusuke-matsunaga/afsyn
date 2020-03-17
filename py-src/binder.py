@@ -286,7 +286,7 @@ def alloc_selecter(dfg, unit_mgr) :
             for cstep, (src, inv) in sel_src.items() :
                 op.add_src(i, src, cstep)
         for cstep, bias in bias_map_dict[op.id].items() :
-            op.add_bias(cstep, bias)
+            op.add_bias(bias, cstep)
 
         if debug :
             print('OP2#{}: # of inputs: {}'.format(op.id, n))
