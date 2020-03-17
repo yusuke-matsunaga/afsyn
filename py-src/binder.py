@@ -167,15 +167,15 @@ def bind_register(dfg, unit_mgr) :
 
 
 ### @brief セレクタの入力のバインディングを行う．
-### @param[in] src_list_map cstep をキーにしてセレクタの入力のリストを入れる辞書
+### @param[in] src_set_dict cstep をキーにしてセレクタの入力のリストを入れる辞書
 ### @param[in] max_fanin セレクタの入力数
-def input_binding(src_list_map, max_fanin) :
+def input_binding(src_set_dict, max_fanin) :
     # 各入力の担当するレジスタ番号のセット
     sel_src_set = [ set() for i in range(max_fanin) ]
     # cstep をキーにして個々のセレクタのソースを入れた辞書
     sel_src_list = [ dict() for i in range(max_fanin) ]
     last_i = -1
-    for cstep, src_list in src_list_map.items() :
+    for cstep, src_list in src_set_dict.items() :
         used = set()
         bound_src_list = [ (None, False) for i in range(max_fanin) ]
         dup_list = list()
@@ -219,12 +219,12 @@ def input_binding(src_list_map, max_fanin) :
     return sel_src_list[:last_i + 1]
 
 
-### @brief セレクタを生成する．
+### @brief OP1の入力のセレクタを生成する．
 ### @param[in] dfg 対象のDFG
-def alloc_selecter(dfg, unit_mgr) :
+def alloc_op1_selecter(dfg, unit_mgr) :
 
-    # OP1 のファンインのセレクタ生成
-    src_list_map_dict = dict()
+    # 演算器毎に cstep をキーにしてソースのセットを記録する．
+    src_set_list = [ dict() for i in range(unit_mgr.op1_num) ]
     for node in dfg.op1node_list :
         src_list = list()
         for i, inode in enumerate(node.fanin_list) :
@@ -233,15 +233,15 @@ def alloc_selecter(dfg, unit_mgr) :
             w = node.weight(i)
             src_list.append( (unit, w) )
         op = node.unit
-        if op.id not in src_list_map_dict :
-            src_list_map_dict[op.id] = dict()
-        src_list_map_dict[op.id][node.cstep] = src_list
+        src_set = src_set_list[op.op_id]
+        assert node.cstep not in src_set
+        src_set[node.cstep] = src_list
 
     for op in unit_mgr.op1_list :
         # cstep をキーにしたファンインのレジスタ番号のリストの辞書
-        src_list_map = src_list_map_dict[op.id]
+        src_set_dict = src_set_list[op.op_id]
         # 入力のバインディングを行う．
-        sel_src_dict = input_binding(src_list_map, 16)
+        sel_src_dict = input_binding(src_set_dict, 16)
         n = len(sel_src_dict)
         for i, sel_src in enumerate(sel_src_dict) :
             for cstep, (src, inv) in sel_src.items() :
@@ -258,9 +258,15 @@ def alloc_selecter(dfg, unit_mgr) :
                     print(' {}'.format(src), end = '')
                 print()
 
-    # OP2 のファンインのセレクタ生成
-    src_list_map_dict = dict()
-    bias_map_dict = dict()
+
+### @brief OP2の入力のセレクタを生成する．
+### @param[in] dfg 対象のDFG
+def alloc_op2_selecter(dfg, unit_mgr) :
+
+    # 演算器毎に cstep をキーにしてソースとバイアスの
+    # セットを記録する．
+    src_set_list = [ dict() for i in range(unit_mgr.op2_num) ]
+    bias_set_list = [ dict() for i in range(unit_mgr.op2_num) ]
     for node in dfg.op2node_list :
         src_list = list()
         for inode in node.fanin_list :
@@ -269,23 +275,22 @@ def alloc_selecter(dfg, unit_mgr) :
             assert not unit.is_store_unit()
             src_list.append( (unit, 1) )
         op = node.unit
-        if op.id not in src_list_map_dict :
-            src_list_map_dict[op.id] = dict()
-            bias_map_dict[op.id] = dict()
-        src_list_map_dict[op.id][node.cstep] = src_list
-        bias_map_dict[op.id][node.cstep] = node.bias
+        src_set = src_set_list[op.op_id]
+        assert node.cstep not in src_set
+        src_set[node.cstep] = src_list
+        bias_set = bias_set_list[op.op_id]
+        bias_set[node.cstep] = node.bias
 
+    # 演算器毎にセレクタの入力数が少なくなるように入力の並び替えをする．
     for op in unit_mgr.op2_list :
-        assert op.id in src_list_map_dict
-        # ファンインのOP1番号のリストのリスト
-        src_list_map = src_list_map_dict[op.id]
+        src_set = src_set_list[op.op_id]
         # 入力のバインディングを行う．
-        sel_src_list = input_binding(src_list_map, 15)
+        sel_src_list = input_binding(src_set, 15)
         n = len(sel_src_list)
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src, inv) in sel_src.items() :
                 op.add_src(i, src, cstep)
-        for cstep, bias in bias_map_dict[op.id].items() :
+        for cstep, bias in bias_set_list[op.op_id].items() :
             op.add_bias(bias, cstep)
 
         if debug :
@@ -355,7 +360,9 @@ def bind(dfg) :
         su.add_src(src, node.cstep, node.bank_id)
 
     # セレクタの生成を行う．
-    alloc_selecter(dfg, unit_mgr)
+    alloc_op1_selecter(dfg, unit_mgr)
+
+    alloc_op2_selecter(dfg, unit_mgr)
 
     return unit_mgr
 

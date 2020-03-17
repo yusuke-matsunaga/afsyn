@@ -62,7 +62,7 @@ if __name__ == '__main__' :
 
     for c in range(args.count) :
         ivals = dict()
-        for i in range(imemory_size) :
+        for i in range(mem_size) :
             ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
         ovals2 = dfg.simulate(ivals, True)

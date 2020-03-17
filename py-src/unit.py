@@ -119,11 +119,17 @@ class MemoryBlock :
 
     ### @brief 初期化
     ### @param[in] block_id ブロック番号
-    def __init__(self, block_id) :
+    ### @param[in] bank_num バンク数
+    ### @param[in] bank_size バンクサイズ
+    def __init__(self, block_id, bank_num, bank_size) :
         self.__block_id = block_id
         self.__bank_dict = dict()
         self.__cond_dict = dict()
         self.__vals = dict()
+        for bank_id in range(bank_num) :
+            for offset in range(bank_size) :
+                key = bank_id, offset
+                self.__vals[key] = None
 
     ### @brief ブロック番号を返す．
     @property
@@ -173,7 +179,9 @@ class MemoryBlock :
     ### @param[in] offset オフセット
     def get_val(self, bank_id, offset) :
         key = bank_id, offset
-        print('get_val[{}:{}:{}] = {}'.format(self.block_id, bank_id, offset, self.__vals[key]))
+        #print('get_val[{}:{}:{}] = {}'.format(self.block_id, bank_id, offset, self.__vals[key]))
+        print('get_val[{}:{}:{}] ='.format(self.block_id, bank_id, offset), end = '')
+        print(' {}'.format(self.__vals[key]))
         return self.__vals[key]
 
 
@@ -224,7 +232,7 @@ class LoadUnit(Unit) :
     ### @brief スケジュールに従ってロードする．
     def load(self, step) :
         if step in self.__block.bank_dict :
-            print('LoadUnit(#{}).load({})'.format(self.id, step))
+            print('{}.load({})'.format(self.name, step))
             bank_id = self.__block.bank_dict[step]
             val = self.__block.get_val(bank_id, self.offset)
             self.__value = val
@@ -233,8 +241,8 @@ class LoadUnit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        print('  LoadUnit(#{}).eval_on({})'.format(self.id, step))
-        print('  LoadUnit(#{}).value = {}'.format(self.id, self.__value))
+        print('  {}.eval_on({})'.format(self.name, step))
+        print('  {}.value = {}'.format(self.name, self.__value))
         return self.__value
 
     ### @brief シミュレーション結果を返す．
@@ -627,7 +635,9 @@ class UnitMgr :
     ### @param[in] block_id ブロック番号
     def new_load_memory(self, block_id) :
         if block_id not in self.__lm_dict :
-            lm = MemoryBlock(block_id)
+            bank_num = self.__imem_layout.bank_num
+            bank_size = self.__imem_layout.bank_size
+            lm = MemoryBlock(block_id, bank_num, bank_size)
             self.__lm_dict[block_id] = lm
         return self.__lm_dict[block_id]
 
@@ -645,7 +655,8 @@ class UnitMgr :
     ### @param[in] block_id ブロック番号
     def new_store_memory(self, block_id) :
         if block_id not in self.__sm_dict :
-            sm = MemoryBlock(block_id)
+            bank_num = self.__omem_layout.bank_num
+            sm = MemoryBlock(block_id, bank_num, 1)
             self.__sm_dict[block_id] = sm
         return self.__sm_dict[block_id]
 
@@ -685,6 +696,7 @@ class UnitMgr :
         # 入力値を load memory にセットする．n
         for addr, val in ivals.items() :
             block_id, bank_id, offset = self.__imem_layout.decode(addr)
+            print('addr = {}: block_id = {}, bank_id = {}, offset = {}'.format(addr, block_id, bank_id, offset))
             lm = self.load_memory(block_id)
             lm.set_val(bank_id, offset, val)
 
@@ -728,7 +740,7 @@ class UnitMgr :
         # Load Unit の内容を出力する．
         print('Load Unit', file = fout)
         for lu in self.load_unit_list :
-            print('{}: [{}-{}]'.format(lu.name, lu.block_id, lu.offset), file = fout)
+            print('{}:'.format(lu.name), file = fout)
             for cstep, bank_id in lu.bank_dict.items() :
                 print('  @{}: bank#{}'.format(cstep, bank_id), file = fout)
         print(file = fout)
@@ -796,7 +808,7 @@ class UnitMgr :
 
         print('Store Unit', file = fout)
         for su in self.store_unit_list :
-            print('{}[{}]'.format(su.name, su.block_id))
+            print('{}'.format(su.name))
             mux_spec = su.mux_spec(0)
             for src in mux_spec.src_list :
                 if src == None :

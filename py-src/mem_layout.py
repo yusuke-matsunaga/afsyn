@@ -33,6 +33,21 @@ class MemLayout :
             print('block_size  = {}'.format(self.__block_size))
             print('bank_size   = {}'.format(self.__bank_size))
 
+    ### @brief ブロック数を返す．
+    @property
+    def block_num(self) :
+        return self.__block_num
+
+    ### @brief バンク数を返す．
+    @property
+    def bank_num(self) :
+        return self.__block_size // self.__bank_size
+
+    ### @brief バンクサイズを返す．
+    @property
+    def bank_size(self) :
+        return self.__bank_size
+
     ### @brief ブロック番号を返す．
     ### @param[in] i_id アドレス
     def block_id(self, i_id) :
