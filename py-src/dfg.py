@@ -145,13 +145,20 @@ class MemSrcNode(MemNode) :
     def is_memsrc(self) :
         return True
 
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'Input Mem[{}]'.format(self.addr)
+
     ### @brief シミュレーションを行う．
     ### @param[in] ivals 入力値を収めた辞書
     ### @param[in] val_dict ノードの値を格納する辞書
-    def simulate(self, ivals, val_dict) :
+    def simulate(self, ivals, val_dict, debug = False) :
         addr = self.addr
         val = ivals[addr]
         val_dict[self.id] = val
+        if debug :
+            print('{} <= {}'.format(val, self.name))
 
 
 ### @brief メモリシンクノード
@@ -173,6 +180,11 @@ class MemSinkNode(MemNode) :
     def is_memsink(self) :
         return True
 
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'Output Mem[{}]'.format(self.addr)
+
     ### @brief 入力ソースを返す．
     @property
     def src(self) :
@@ -181,12 +193,14 @@ class MemSinkNode(MemNode) :
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
     ### @param[in] ovals 出力値を収める辞書
-    def simulate(self, val_dict, ovals) :
+    def simulate(self, val_dict, ovals, debug = False) :
         inode = self.src
         assert inode.id in val_dict
         val = val_dict[inode.id]
         addr = self.addr
         ovals[addr] = val
+        if debug :
+            print('{} <= {}'.format(self.name, val))
 
 
 ### @brief 演算ノード
@@ -194,10 +208,17 @@ class OpNode(Node) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] op_id 演算器番号
     ### @param[in] fanin_list ファンインノードのリスト
-    def __init__(self, id, fanin_list) :
+    def __init__(self, id, op_id, fanin_list) :
         super().__init__(id, fanin_list)
+        self.__op_id = op_id
         self.__fanout = None
+
+    ### @brief 演算器番号を返す．
+    @property
+    def op_id(self) :
+        return self.__op_id
 
     ### @brief ファンアウトをセットする．
     def set_fanout(self, onode) :
@@ -214,16 +235,22 @@ class Op1Node(OpNode) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] op_id 演算器番号
     ### @param[in] fanin_list ファンインノードのリスト
     ### @param[in] weight_list 重みのリスト
-    def __init__(self, id, fanin_list, weight_list) :
-        super().__init__(id, fanin_list)
+    def __init__(self, id, op_id, fanin_list, weight_list) :
+        super().__init__(id, op_id, fanin_list)
         self.__weight_list = list(weight_list)
 
     ### @brief OP1ノードのとき True を返す．
     @property
     def is_op1(self) :
         return True
+
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'OP1#{}'.format(self.op_id)
 
     ### @brief 重みを返す．
     def weight(self, pos) :
@@ -237,23 +264,36 @@ class Op1Node(OpNode) :
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
-    def simulate(self, val_dict) :
+    def simulate(self, val_dict, debug = False) :
         val = 0
         for i, inode in enumerate(self.fanin_list) :
             assert inode.id in val_dict
             ival = val_dict[inode.id]
             w = self.weight(i)
             if w == 0.125 :
-                val += ival
+                ival1 = ival
             elif w == -0.125 :
-                val += ~ival
+                ival1 = ~ival
             elif w == 0.25 :
-                val += ival
-                val += ival
+                ival1 = ival + ival
             else :
                 print('w = {}'.format(w))
                 assert False
+            val += ival1
         val_dict[self.id] = val
+        if debug :
+            print('{}:'.format(self.name))
+            for i, inode in enumerate(self.fanin_list) :
+                ival = val_dict[inode.id]
+                w = self.weight(i)
+                if w == 0.125 :
+                    ival1 = ival
+                elif w == -0.125 :
+                    ival1 = ~ival
+                elif w == 0.25 :
+                    ival1 = ival + ival
+                print('  {}: {}'.format(inode.name, ival1))
+            print(' => {}'.format(val))
 
 
 ### @brief タイプ2演算ノード
@@ -261,9 +301,10 @@ class Op2Node(OpNode) :
 
     ### @brief 初期化
     ### @param[in] id ID番号
+    ### @param[in] op_id 演算器番号
     ### @param[in] fanin_list ファンインノードのリスト
-    def __init__(self, id, fanin_list) :
-        super().__init__(id, fanin_list)
+    def __init__(self, id, op_id, fanin_list) :
+        super().__init__(id, op_id, fanin_list)
         bias = 0
         for inode in self.fanin_list :
             for w in inode.weight_list :
@@ -276,6 +317,11 @@ class Op2Node(OpNode) :
     def is_op2(self) :
         return True
 
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'OP2#{}'.format(self.op_id)
+
     ### @brief 負の重みを持つ入力数
     @property
     def bias(self) :
@@ -283,18 +329,7 @@ class Op2Node(OpNode) :
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
-    def simulate0(self, val_dict) :
-        val = 0
-        for i, inode in enumerate(self.fanin_list) :
-            assert inode.id in val_dict
-            ival = val_dict[inode.id]
-            val += ival
-            val *= 0.125
-        val_dict[self.id] = val
-
-    ### @brief シミュレーションを行う．
-    ### @param[in] val_dict ノードの値を格納する辞書
-    def simulate(self, val_dict) :
+    def simulate(self, val_dict, debug) :
         val = self.bias
         for i, inode in enumerate(self.fanin_list) :
             assert inode.id in val_dict
@@ -302,6 +337,13 @@ class Op2Node(OpNode) :
             val += ival
         val *= 0.125
         val_dict[self.id] = val
+        if debug :
+            print('{}:'.format(self.name))
+            for i, inode in enumerate(self.fanin_list) :
+                ival = val_dict[inode.id]
+                print('  {}: {}'.format(inode.name, ival))
+            print('  BIAS: {}'.format(self.bias))
+            print(' => {}'.format(val))
 
 
 ### @brief 変数を表すクラス
@@ -451,7 +493,8 @@ class DFG :
     ### @param[in] weight_list 重みのリスト
     def make_op1(self, fanin_list, weight_list) :
         id = len(self.__node_list)
-        node = Op1Node(id, fanin_list, weight_list)
+        op_id = len(self.__op1node_list)
+        node = Op1Node(id, op_id, fanin_list, weight_list)
         self.__node_list.append(node)
         self.__op1node_list.append(node)
         return node
@@ -460,7 +503,8 @@ class DFG :
     ### @param[in] fanin_list ファンインノードのリスト
     def make_op2(self, fanin_list) :
         id = len(self.__node_list)
-        node = Op2Node(id, fanin_list)
+        op_id = len(self.__op2node_list)
+        node = Op2Node(id, op_id, fanin_list)
         self.__node_list.append(node)
         self.__op2node_list.append(node)
         return node
@@ -646,18 +690,17 @@ class DFG :
     ### @return 出力値を格納した辞書を返す．
     ###
     ### ivals は ivals[x] で値が取得できればなんでもよい．
-    def simulate(self, ivals) :
+    def simulate(self, ivals, debug = False) :
         ovals = dict()
         val_dict = dict()
 
         for node in self.memsrcnode_list :
-            node.simulate(ivals, val_dict)
-
+            node.simulate(ivals, val_dict, debug)
         for node in self.op1node_list :
-            node.simulate(val_dict)
+            node.simulate(val_dict, debug)
 
         for node in self.op2node_list :
-            node.simulate(val_dict)
+            node.simulate(val_dict, debug)
 
         for node in self.memsinknode_list :
             inode = node.src

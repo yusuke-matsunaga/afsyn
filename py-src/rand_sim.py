@@ -65,7 +65,7 @@ if __name__ == '__main__' :
         for i in range(imemory_size) :
             ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
-        ovals2 = dfg.simulate(ivals)
+        ovals2 = dfg.simulate(ivals, True)
         ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step)
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
