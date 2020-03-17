@@ -65,7 +65,7 @@ if __name__ == '__main__' :
         ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step)
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
-            val3 = ovals3[i]
+            val3 = ovals3[i] * 0.125
             print('O#{}:'.format(i))
             if val2 != val :
                 print('Error: val = {}, val2 = {}'.format(val, val2))

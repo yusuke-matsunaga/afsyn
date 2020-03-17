@@ -112,6 +112,9 @@ class Unit :
 
 
 ### @brief メモリを表すクラス
+###
+### cstep 毎にどのバンクを選択するかの辞書と
+### bank_id 毎に選択している cstep を保持する辞書を持つ．
 class MemoryBlock :
 
     ### @brief 初期化
@@ -325,11 +328,12 @@ class Op1Unit(Unit) :
             src = mux.src(step)
             if src is None :
                 break
-            print('    #{}\'th src = #{}'.format(i, src.id))
+            print('    #{}\'th src = #{}: {}'.format(i, src.id, src.value))
             if step in self.__inv_cond_list[i] :
                 val -= src.value
             else :
                 val += src.value
+        print('  => {}'.format(val))
         self.__value = val
         return self.__value
 
@@ -380,18 +384,19 @@ class Op2Unit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        print('  Op2Unit(#{}).eval_on({})'.format(self.id, step))
         if step in self.__bias_map :
+            print('  Op2Unit(#{}).eval_on({})'.format(self.id, step))
             val = 0
             for i in range(self.input_num) :
                 mux = self.mux_spec(i)
                 src = mux.src(step)
                 if src is None :
                     continue
-                print('    #{}: src = #{}'.format(i, src.id))
+                print('    #{}: src = #{}: {}'.format(i, src.id, src.value))
                 val += src.value
             val += self.__bias_map[step]
             self.__value = val
+            print('  => {}'.format(val))
         return self.__value
 
     ### @brief シミュレーション結果を返す．
@@ -658,6 +663,9 @@ class UnitMgr :
                 unit.load(step)
 
             for unit in self.reg_list :
+                unit.eval_on(step)
+
+            for unit in self.op2_list :
                 unit.eval_on(step)
 
             for unit in self.store_unit_list :
