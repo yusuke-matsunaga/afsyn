@@ -57,6 +57,7 @@ if __name__ == '__main__' :
     op_limit = 16
     s_method = 2
     dfg = scheduling(op_list, op_limit, imem_layout, omem_layout, s_method)
+    dfg.print()
     unit_mgr = bind(dfg)
     unit_mgr.print(sys.stdout)
 
@@ -70,7 +71,7 @@ if __name__ == '__main__' :
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
             val3 = ovals3[i] * 0.125
-            print('O#{}:'.format(i))
+            print('O[{}]:'.format(i))
             if val2 != val :
                 print('Error: val = {}, val2 = {}'.format(val, val2))
             if val3 != val :

@@ -148,7 +148,11 @@ class MemSrcNode(MemNode) :
     ### @brief 名前を返す．
     @property
     def name(self) :
-        return 'Input Mem[{}]'.format(self.addr)
+        return 'imem[{}:{},{},{}]'.format(self.addr, self.block_id, self.bank_id, self.offset)
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        print('{}'.format(self.name))
 
     ### @brief シミュレーションを行う．
     ### @param[in] ivals 入力値を収めた辞書
@@ -183,12 +187,16 @@ class MemSinkNode(MemNode) :
     ### @brief 名前を返す．
     @property
     def name(self) :
-        return 'Output Mem[{}]'.format(self.addr)
+        return 'omem[{}]'.format(self.addr)
 
     ### @brief 入力ソースを返す．
     @property
     def src(self) :
         return self.__src
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        print('{}'.format(self.name))
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
@@ -250,7 +258,7 @@ class Op1Node(OpNode) :
     ### @brief 名前を返す．
     @property
     def name(self) :
-        return 'OP1#{}'.format(self.op_id)
+        return 'op1[{}]'.format(self.op_id)
 
     ### @brief 重みを返す．
     def weight(self, pos) :
@@ -261,6 +269,12 @@ class Op1Node(OpNode) :
     def weight_list(self) :
         for w in self.__weight_list :
             yield w
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        print('{}: @{}'.format(self.name, self.cstep))
+        for i, inode in enumerate(self.fanin_list) :
+            print('  Input#{}: {} x {}'.format(i, inode.name, self.weight(i)))
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
@@ -320,12 +334,19 @@ class Op2Node(OpNode) :
     ### @brief 名前を返す．
     @property
     def name(self) :
-        return 'OP2#{}'.format(self.op_id)
+        return 'op2[{}]'.format(self.op_id)
 
     ### @brief 負の重みを持つ入力数
     @property
     def bias(self) :
         return self.__bias
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        print('{}: @{}'.format(self.name, self.cstep))
+        for i, inode in enumerate(self.fanin_list) :
+            print('  Input#{}: {}'.format(i, inode.name))
+        print('  Bias: {}'.format(self.bias))
 
     ### @brief シミュレーションを行う．
     ### @param[in] val_dict ノードの値を格納する辞書
@@ -366,6 +387,11 @@ class Var :
         if self.__end < cstep :
             self.__end = cstep
         assert self.__start < self.__end
+
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'var#[{}]'.format(self.src.name)
 
     ### @brief ソースノードを返す．
     @property
@@ -424,6 +450,12 @@ class Var :
     def bind(self, unit) :
         assert isinstance(unit, Unit)
         self.__unit = unit
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        print('{}@{}'.format(self.name, self.start))
+        for tgt in self.tgt_list :
+            print('  {}@{}'.format(tgt.name, tgt.cstep))
 
     ### @brief 比較演算子
     def __lt__(self, other) :
@@ -684,6 +716,19 @@ class DFG :
             if max_n < n :
                 max_n = n
         self.__reg_num = max_n
+
+    ### @brief 内容を出力する．
+    def print(self) :
+        for node in self.memsrcnode_list :
+            node.print()
+        for node in self.op1node_list :
+            node.print()
+        for node in self.op2node_list :
+            node.print()
+        for node in self.memsinknode_list :
+            node.print()
+        for var in self.var_list :
+            var.print()
 
     ### @brief シミュレーションを行う．
     ### @param[in] ivals 入力の値のリスト

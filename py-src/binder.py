@@ -134,12 +134,9 @@ def bind_register(dfg, unit_mgr) :
     # にはレジスタを使わない．
     var_list = list()
     for var in dfg.var_list :
-        if var.start + 1 == var.end :
-            inode = var.src
-            if inode.is_memsrc or inode.is_op2 :
-                var.bind(inode.unit)
-            else :
-                var_list.append(var)
+        inode = var.src
+        if (inode.is_memsrc or inode.is_op2) and var.start + 1 == var.end :
+            var.bind(inode.unit)
         else :
             var_list.append(var)
     var_list.sort()
@@ -228,8 +225,11 @@ def alloc_op1_selecter(dfg, unit_mgr) :
     for node in dfg.op1node_list :
         src_list = list()
         for i, inode in enumerate(node.fanin_list) :
-            var = inode.var
-            unit = var.unit
+            if inode.cstep + 1 == node.cstep and inode.is_memsrc :
+                unit = inode.unit
+            else :
+                var = inode.var
+                unit = var.unit
             w = node.weight(i)
             src_list.append( (unit, w) )
         op = node.unit
@@ -310,14 +310,8 @@ def bind(dfg) :
     unit_mgr = UnitMgr(dfg.imem_layout, dfg.omem_layout)
 
     # Load Unit は一意に割り当てられる．
-    lu_map = dict()
     for node in dfg.memsrcnode_list :
-        key = node.block_id, node.offset
-        if key in lu_map :
-            lu = lu_map[key]
-        else :
-            lu = unit_mgr.new_load_unit(node.block_id, node.offset)
-            lu_map[key] = lu
+        lu = unit_mgr.new_load_unit(node.block_id, node.offset)
         node.bind(lu)
         lu.add_cond(node.cstep, node.bank_id)
 
@@ -330,6 +324,7 @@ def bind(dfg) :
             unit_mgr.new_op1_unit(16)
         op = unit_mgr.op1(pos)
         node.bind(op)
+        op.bind(node, step)
         op1_count[step] += 1
 
     op2_count = [ 0 for i in range(dfg.total_step) ]
@@ -340,19 +335,15 @@ def bind(dfg) :
             unit_mgr.new_op2_unit(15)
         op = unit_mgr.op2(pos)
         node.bind(op)
+        op.bind(node, step)
         op2_count[step] += 1
 
     # レジスタ割り当てを行う．
     bind_register(dfg, unit_mgr)
 
     # Store Unit も一意に割り当てられる．
-    su_map = dict()
     for node in dfg.memsinknode_list :
-        if node.block_id in su_map :
-            su = su_map[node.block_id]
-        else :
-            su = unit_mgr.new_store_unit(node.block_id)
-            su_map[node.block_id] = su
+        su = unit_mgr.new_store_unit(node.block_id)
         node.bind(su)
         inode = node.src
         var = inode.var
