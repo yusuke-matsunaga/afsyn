@@ -7,6 +7,10 @@
 ### Copyright (C) 2020 Yusuke Matsunaga
 ### All rights reserved.
 
+import sys
+
+debug_out = None
+
 ### @brief セレクタの仕様を表すクラス
 class MuxSpec :
 
@@ -83,7 +87,7 @@ class Unit :
     def _add_src(self, i, src, cstep) :
         if src is None :
             return
-        assert not src.is_store_unit()
+        assert not src.is_store_unit
         self.__mux_list[i].add_src(src, cstep)
 
     ### @brief 入力数を返す．
@@ -104,22 +108,27 @@ class Unit :
             return None
 
     ### @brief ロードユニットのときに True を返す．
+    @property
     def is_load_unit(self) :
         return False
 
     ### @brief ストアユニットのときに True を返す．
+    @property
     def is_store_unit(self) :
         return False
 
     ### @brief OP1ユニットのときに True を返す．
+    @property
     def is_op1_unit(self) :
         return False
 
     ### @brief OP2ユニットのときに True を返す．
+    @property
     def is_op2_unit(self) :
         return False
 
     ### @brief レジスタのときに True を返す．
+    @property
     def is_reg_unit(self) :
         return False
 
@@ -215,8 +224,14 @@ class LoadUnit(Unit) :
         self.__block.add_cond(cstep, bank_id)
 
     ### @brief ロードユニットのときに True を返す．
+    @property
     def is_load_unit(self) :
         return True
+
+    ### @brief メモリブロックを返す．
+    @property
+    def block(self) :
+        return self.__block
 
     ### @brief ブロック番号を返す．
     @property
@@ -241,26 +256,26 @@ class LoadUnit(Unit) :
     def bank_dict(self) :
         return self.__block.bank_dict
 
-    ### @brief スケジュールに従ってロードする．
-    def load(self, step) :
-        if step in self.__block.bank_dict :
-            print('{}.load({})'.format(self.name, step))
-            bank_id = self.__block.bank_dict[step]
-            val = self.__block.get_val(bank_id, self.offset)
-            self.__next_value = val
-            print('  next_value = {}'.format(self.__next_value))
-
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        print('  {}.eval_on({})'.format(self.name, step))
-        print('  {}.value = {}'.format(self.name, self.__value))
-        return self.__value
+        if step in self.__block.bank_dict :
+            if debug_out :
+                debug_out.write('{}.eval_on({})\n'.format(self.name, step))
+            bank_id = self.__block.bank_dict[step]
+            val = self.__block.get_val(bank_id, self.offset)
+            self.__next_value = val
+            if debug_out :
+                debug_out.write('  bank = {}\n'.format(bank_id))
+                debug_out.write('  next_value = {}\n'.format(self.__next_value))
 
     ### @brief シミュレーション時刻を進める．
     def sync(self) :
-        self.__value = self.__next_value
-        print('{}.sync() <= {}'.format(self.name, self.value))
+        if self.__next_value is not None :
+            self.__value = self.__next_value
+            self.__next_value = None
+            if debug_out :
+                debug_out.write('{}.sync() <= {}\n'.format(self.name, self.value))
 
     ### @brief シミュレーション結果を返す．
     @property
@@ -277,6 +292,8 @@ class StoreUnit(Unit) :
     def __init__(self, id, mem_block) :
         super().__init__(id, 1)
         self.__block = mem_block
+        self.__next_bank_id = None
+        self.__next_value = None
 
     ### @brief ストア条件を追加する．
     def add_src(self, src, cstep, bank_id) :
@@ -284,8 +301,14 @@ class StoreUnit(Unit) :
         self.__block.add_cond(cstep, bank_id)
 
     ### @brief ストアユニットのときに True を返す．
+    @property
     def is_store_unit(self) :
         return True
+
+    ### @brief メモリブロックを返す．
+    @property
+    def block(self) :
+        return self.__block
 
     ### @brief ブロック番号を返す．
     @property
@@ -305,22 +328,46 @@ class StoreUnit(Unit) :
     def bank_dict(self) :
         return self.__block.bank_dict
 
-    ### @brief スケジュールに従ってストアする．
+    ### @brief シミュレーションを行う．
     ### @param[in] step
-    def store(self, step) :
+    def eval_on(self, step) :
         if step in self.bank_dict :
-            print('{}.store({})'.format(self.name, step))
+            if debug_out :
+                debug_out.write('{}.eval_on({})\n'.format(self.name, step))
             src = self.mux_spec(0).src(step)
-            val = src.value
+            val = src.eval_on(step)
             bank_id = self.bank_dict[step]
-            print('  mem[{}][{}] <= {}'.format(self.block_id, bank_id, val))
-            self.__block.set_val(bank_id, 0, val)
+            if debug_out :
+                debug_out.write('  bank = {}\n'.format(bank_id))
+                debug_out.write('  val  = {}\n'.format(val))
+            self.__next_bank_id = bank_id
+            self.__next_value = val
+
+    ### @brief シミュレーション時刻を進める．
+    def sync(self) :
+        if self.__next_value is not None :
+            self.__block.set_val(self.__next_bank_id, 0, self.__next_value)
+            self.__next_bank_id = None
+            self.__next_value = None
+
+
+### @brief THROUGHユニット
+class ThroughUnit(Unit) :
+
+    ### @brief 初期化
+    def __init__(self, id, src) :
+        super().__init__(id, 0)
+        self.__src = src
+
+    ### @brief 名前を返す．
+    @property
+    def name(self) :
+        return 'THROUGH'
 
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
-        print('{}.eval_on({})'.format(self.name, step))
-
+        return self.__src.value
 
 
 ### @brief OP1ユニット
@@ -334,7 +381,6 @@ class Op1Unit(Unit) :
         super().__init__(id, input_num)
         self.__op_id = op_id
         self.__inv_cond_list = [ list() for i in range(input_num) ]
-        self.__value = None
 
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
@@ -347,6 +393,7 @@ class Op1Unit(Unit) :
             self.__inv_cond_list[i].append(cstep)
 
     ### @brief OP1ユニットのときに True を返す．
+    @property
     def is_op1_unit(self) :
         return True
 
@@ -369,26 +416,23 @@ class Op1Unit(Unit) :
     def eval_on(self, step) :
         if self.node(step) is None :
             return None
-        print("  {}.eval_on({}): DFG's {}".format(self.name, step, self.node(step).name))
+        if debug_out :
+            debug_out.write("  {}.eval_on({}): DFG's {}\n".format(self.name, step, self.node(step).name))
         val = 0
         for i in range(self.input_num) :
             mux = self.mux_spec(i)
             src = mux.src(step)
             if src is None :
                 continue
-            print('   #{}: {}:{}'.format(i, src.name, src.value))
+            if debug_out :
+                debug_out.write('   #{}: {}:{}\n'.format(i, src.name, src.value))
             if step in self.__inv_cond_list[i] :
                 val += ~src.value
             else :
                 val += src.value
-        print('  => {}'.format(val))
-        self.__value = val
-        return self.__value
-
-    ### @brief シミュレーション結果を返す．
-    @property
-    def value(self) :
-        return self.__value
+        if debug_out :
+            debug_out.write('  => {}\n'.format(val))
+        return val
 
 
 ### @brief OP2ユニット
@@ -402,7 +446,6 @@ class Op2Unit(Unit) :
         super().__init__(id, input_num)
         self.__op_id = op_id
         self.__bias_map = dict()
-        self.__value = None
 
     ### @brief 一つのcstepに関する入力を設定する．
     ### @param[in] i 入力番号
@@ -416,6 +459,7 @@ class Op2Unit(Unit) :
         self.__bias_map[cstep] = bias
 
     ### @brief OP2ユニットのときに True を返す．
+    @property
     def is_op2_unit(self) :
         return True
 
@@ -440,24 +484,22 @@ class Op2Unit(Unit) :
         if self.node(step) is None :
             return None
         assert step in self.__bias_map
-        print('  {}.eval_on({})'.format(self.name, step))
+        if debug_out :
+            debug_out.write('{}.eval_on({})\n'.format(self.name, step))
         val = 0
         for i in range(self.input_num) :
             mux = self.mux_spec(i)
             src = mux.src(step)
             if src is None :
                 continue
-            print('    #{}: src = {}: {}'.format(i, src.name, src.value))
+            if debug_out :
+                debug_out.write('    #{}: src = {}: {}\n'.format(i, src.name, src.value))
+            assert src.value is not None
             val += src.value
         val += self.__bias_map[step]
-        self.__value = val
-        print('  => {}'.format(val))
-        return self.__value
-
-    ### @brief シミュレーション結果を返す．
-    @property
-    def value(self) :
-        return self.__value
+        if debug_out :
+            debug_out.write('  => {}\n'.format(val))
+        return val
 
 
 ### @brief レジスタの仕様を表すクラス
@@ -484,9 +526,9 @@ class RegUnit(Unit) :
             self.__last_step = var.end
         var.bind(self)
         if node.is_memsrc :
-            cstep = var.start + 1
+            cstep = node.cstep + 1
         else :
-            cstep = var.start
+            cstep = node.cstep
         op = node.unit
         if op.id not in self.__cond_map :
             self.__cond_map[op.id] = list()
@@ -495,6 +537,7 @@ class RegUnit(Unit) :
         self.__src_map[cstep] = op
 
     ### @brief レジスタのときに True を返す．
+    @property
     def is_reg_unit(self) :
         return True
 
@@ -532,17 +575,26 @@ class RegUnit(Unit) :
     ### @brief シミュレーションを行う．
     ### @param[in] step
     def eval_on(self, step) :
+        if debug_out :
+            debug_out.write('{}.eval_on({})\n'.format(self.name, step))
         if step in self.__src_map :
-            print('{}.eval_on({})'.format(self.name, step))
             src = self.__src_map[step]
-            val = src.eval_on(step)
+            if src.is_load_unit :
+                val = src.value
+            else :
+                val = src.eval_on(step)
             self.__next_value = val
-            print('{}.next_value <= {}'.format(self.name, val))
+            if debug_out :
+                debug_out.write('  src = {}\n'.format(src.name))
+                debug_out.write('  {}.next_value <= {}\n'.format(self.name, val))
 
     ### @brief シミュレーションの終了処理
     def sync(self) :
-        self.__value = self.__next_value
-        print('{}.sync(). value <= {}'.format(self.name, self.value))
+        if self.__next_value is not None :
+            self.__value = self.__next_value
+            self.__next_value = None
+            if debug_out :
+                debug_out.write('{}.sync(). value <= {}\n'.format(self.name, self.value))
 
     ### @brief シミュレーション結果を返す．
     @property
@@ -564,6 +616,7 @@ class UnitMgr :
         self.__sm_dict = dict()
         self.__su_dict = dict()
         self.__su_list = list()
+        self.__through_list = list()
         self.__op1_list = list()
         self.__op2_list = list()
         self.__reg_list = list()
@@ -702,6 +755,14 @@ class UnitMgr :
             self.__sm_dict[block_id] = sm
         return self.__sm_dict[block_id]
 
+    ### @brief THROUGH Unit を作る．
+    def new_through_unit(self, src) :
+        id = len(self.__unit_list)
+        unit = ThroughUnit(id, src)
+        self.__unit_list.append(unit)
+        self.__through_list.append(unit)
+        return unit
+
     ### @brief OP1 Unit を作る．
     ### @param[in] input_num 入力数
     def new_op1_unit(self, input_num) :
@@ -734,34 +795,41 @@ class UnitMgr :
     ### @brief 動作シミュレーションを行う．
     ### @param[in] ivals 入力値
     ### @return 出力値を納めた辞書を返す．
-    def simulate(self, ivals, oaddr_list, total_step) :
-        # 入力値を load memory にセットする．n
+    def simulate(self, ivals, oaddr_list, total_step, debug) :
+        global debug_out
+        if debug :
+            debug_out = sys.stdout
+        else :
+            debug_out = None
+
+        # 入力値を load memory にセットする．
         for addr, val in ivals.items() :
             block_id, bank_id, offset = self.__imem_layout.decode(addr)
-            print('addr = {}: block_id = {}, bank_id = {}, offset = {}'.format(addr, block_id, bank_id, offset))
             lm = self.load_memory(block_id)
             lm.set_val(bank_id, offset, val)
 
         for step in range(total_step) :
-            print('simulate@{}'.format(step))
+            if debug_out :
+                debug_out.write('simulate@{}\n'.format(step))
             for unit in self.load_unit_list :
-                unit.load(step)
+                unit.eval_on(step)
+
+            for unit in self.store_unit_list :
+                unit.eval_on(step)
 
             for unit in self.reg_list :
                 unit.eval_on(step)
 
-            for unit in self.op2_list :
-                unit.eval_on(step)
-
-            print('sync@{}'.format(step))
+            if debug_out :
+                debug_out.write('sync@{}\n'.format(step))
             for unit in self.load_unit_list :
-                unit.sync()
-
-            for unit in self.reg_list :
                 unit.sync()
 
             for unit in self.store_unit_list :
-                unit.store(step)
+                unit.sync()
+
+            for unit in self.reg_list :
+                unit.sync()
 
         # 出力値を store memory から取り出す．
         ovals = dict()
@@ -776,28 +844,25 @@ class UnitMgr :
     ### @brief 内容を出力する．
     def print(self, fout) :
         # Load Memory の内容を出力する．
-        print('Load Memory', file = fout)
+        fout.write('Load Memory\n')
         for lm in self.load_memory_list :
-            print('{}'.format(lm.name), file = fout)
+            fout.write('{}\n'.format(lm.name))
             for bank_id, cond_list in lm.cond_dict.items() :
-                print('  bank#{} @ ('.format(bank_id), end = '', file = fout)
+                fout.write('  bank#{} @ ('.format(bank_id))
                 for cond in cond_list :
-                    print(' {}'.format(cond), end = '', file = fout)
-                print(')', file = fout)
-        print(file = fout)
+                    fout.write(' {}'.format(cond))
+                fout.write('\n')
+        fout.write('\n')
 
         # Load Unit の内容を出力する．
-        print('Load Unit', file = fout)
+        fout.write('Load Unit\n')
         for lu in self.load_unit_list :
-            print('{}:'.format(lu.name), file = fout)
-            for cstep, bank_id in lu.bank_dict.items() :
-                print('  @{}: bank#{}'.format(cstep, bank_id), file = fout)
-        print(file = fout)
+            fout.write('{}: = {}[{}]\n'.format(lu.name, lu.block.name, lu.offset))
 
         # Op1 Unit の内容を出力する．
-        print('OP1 Unit', file = fout)
+        fout.write('OP1 Unit\n')
         for op1 in self.op1_list :
-            print('{}'.format(op1.name), file = fout)
+            fout.write('{}\n'.format(op1.name))
             for i in range(op1.input_num) :
                 first = True
                 mux_spec = op1.mux_spec(i)
@@ -805,20 +870,20 @@ class UnitMgr :
                     if src == None :
                         continue
                     if first :
-                        print('  Input#{}'.format(i), file = fout)
+                        fout.write('  Input#{}\n'.format(i))
                         first = False
-                    print('    {}@ ('.format(src.name), end = '', file = fout)
+                    fout.write('    {}@ ('.format(src.name))
                     cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
-                        print(' {}'.format(cond), end = '', file = fout)
-                    print(')', file = fout)
-            print(file = fout)
-        print(file = fout)
+                        fout.write(' {}'.format(cond))
+                    fout.write(')\n')
+            fout.write('\n')
+        fout.write('\n')
 
         # Op2 Unit の内容を出力する．
-        print('OP2 Unit', file = fout)
+        fout.write('OP2 Unit\n')
         for op2 in self.op2_list :
-            print('{}'.format(op2.name), file = fout)
+            fout.write('{}\n'.format(op2.name))
             for i in range(op2.input_num) :
                 first = True
                 mux_spec = op2.mux_spec(i)
@@ -826,55 +891,56 @@ class UnitMgr :
                     if src == None :
                         continue
                     if first :
-                        print('  Input#{}'.format(i), file = fout)
+                        fout.write('  Input#{}\n'.format(i))
                         first = False
-                    assert src.is_reg_unit()
-                    print('    {} @ ('.format(src.name), end = '', file = fout)
+                    assert src.is_reg_unit
+                    fout.write('    {} @ ('.format(src.name))
                     cond_list = mux_spec.src_cond(src)
                     for cond in cond_list :
-                        print(' {}'.format(cond), end = '', file = fout)
-                    print(')', file = fout)
-            print('  Bias', file = fout)
+                        fout.write(' {}'.format(cond))
+                    fout.write(')\n')
+            fout.write('  Bias\n')
             for cstep, bias in op2.bias_map.items() :
-                print('    {}@ {}'.format(bias, cstep), file = fout)
-            print(file = fout)
-        print(file = fout)
+                fout.write('    {}@{}\n'.format(bias, cstep))
+            fout.write('\n')
+        fout.write('\n')
 
         # Store Unit の内容を出力する．
-        print('Store Memory', file = fout)
+        fout.write('Store Memory\n')
         for sm in self.store_memory_list :
-            print('{}'.format(sm.name), file = fout)
+            fout.write('{}\n'.format(sm.name))
             for bank_id, cond_list in sm.cond_dict.items() :
-                print('  bank#{}@ ('.format(bank_id), end = '', file = fout)
+                fout.write('  bank#{}@ ('.format(bank_id))
                 for cond in cond_list :
-                    print(' {}'.format(cond), end = '', file = fout)
-                print(')', file = fout)
-        print(file = fout)
+                    fout.write(' {}'.format(cond))
+                fout.write(')\n')
+        fout.write('\n')
 
-        print('Store Unit', file = fout)
+        fout.write('Store Unit\n')
         for su in self.store_unit_list :
-            print('{}'.format(su.name))
+            fout.write('{}: {}'.format(su.name, su.block.name))
             mux_spec = su.mux_spec(0)
             for src in mux_spec.src_list :
                 if src == None :
                     continue
-                print('    {}@ ('.format(src.name), end = '', file = fout)
+                fout.write('    {}@ ('.format(src.name))
                 cond_list = mux_spec.src_cond(src)
                 for cond in cond_list :
-                    print(' {}'.format(cond), end = '', file = fout)
-                print(')', file = fout)
-            print(file = fout)
-        print(file = fout)
+                    fout.write(' {}'.format(cond))
+                fout.write(')\n')
+            fout.write('\n')
+        fout.write('\n')
 
-        print('Register Unit', file = fout)
+        fout.write('Register Unit\n')
         for reg in self.reg_list :
-            print('{}'.format(reg.name), end = '')
+            fout.write('{}: '.format(reg.name))
             for var in reg.var_list :
-                print(' {}'.format(var.name), end = '')
-            print()
+                fout.write(' {}'.format(var.name))
+            fout.write('\n')
             for unit_id, cstep_list in reg.cond_map.items() :
                 src = self.__unit_list[unit_id]
-                print('    {}@ ('.format(src.name), end = '', file = fout)
+                fout.write('    {}@ ('.format(src.name))
                 for cstep in cstep_list :
-                    print(' {}'.format(cstep), end = '', file = fout)
-                print(')', file = fout)
+                    fout.write(' {}'.format(cstep))
+                fout.write(')\n')
+            fout.write('\n')

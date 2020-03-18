@@ -61,18 +61,27 @@ if __name__ == '__main__' :
     unit_mgr = bind(dfg)
     unit_mgr.print(sys.stdout)
 
+    random.seed(1234)
+
     for c in range(args.count) :
         ivals = dict()
         for i in range(mem_size) :
             ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
-        ovals2 = dfg.simulate(ivals, True)
-        ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step)
+        ovals2 = dfg.simulate(ivals, False)
+        ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step, False)
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
             val3 = ovals3[i] * 0.125
-            print('O[{}]:'.format(i))
+            error = 0
             if val2 != val :
-                print('Error: val = {}, val2 = {}'.format(val, val2))
+                error |= 1
             if val3 != val :
-                print('Error: val = {}, val3 = {}'.format(val, val3))
+                error |= 2
+            if error :
+                print('Error at O[{}]:'.format(i))
+                print('  expected value = {}'.format(val))
+                if error & 1 :
+                    print('  DFG value = {}'.format(val2))
+                if error & 2 :
+                    print('  RTL value = {}'.format(val3))

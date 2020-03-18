@@ -53,6 +53,10 @@ def reg_bind1(dfg, unit_mgr, var_list) :
             continue
         reg = unit_mgr.new_reg_unit()
         node = dfg.node_list[var.src_id]
+        if node.is_memsrc :
+            thr_unit = unit_mgr.new_through_unit(node.unit)
+        else :
+            thr_unit = None
         reg.add_src(node)
 
 
@@ -135,7 +139,7 @@ def bind_register(dfg, unit_mgr) :
     var_list = list()
     for var in dfg.var_list :
         inode = var.src
-        if (inode.is_memsrc or inode.is_op2) and var.start + 1 == var.end :
+        if inode.is_memsrc and var.start + 1 == var.end :
             var.bind(inode.unit)
         else :
             var_list.append(var)
@@ -272,7 +276,7 @@ def alloc_op2_selecter(dfg, unit_mgr) :
         for inode in node.fanin_list :
             var = inode.var
             unit = var.unit
-            assert not unit.is_store_unit()
+            assert not unit.is_store_unit
             src_list.append( (unit, 1) )
         op = node.unit
         src_set = src_set_list[op.op_id]
@@ -348,6 +352,8 @@ def bind(dfg) :
         inode = node.src
         var = inode.var
         src = var.unit
+        if src.is_reg_unit :
+            src = unit_mgr.new_through_unit(src)
         su.add_src(src, node.cstep, node.bank_id)
 
     # セレクタの生成を行う．

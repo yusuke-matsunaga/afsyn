@@ -719,8 +719,6 @@ class DFG :
 
     ### @brief 内容を出力する．
     def print(self) :
-        for node in self.memsrcnode_list :
-            node.print()
         for node in self.op1node_list :
             node.print()
         for node in self.op2node_list :
