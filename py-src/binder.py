@@ -311,7 +311,7 @@ def alloc_op2_selecter(dfg, unit_mgr) :
 
 ### @brief バインディングを行う．
 def bind(dfg) :
-    unit_mgr = UnitMgr(dfg.imem_layout, dfg.omem_layout)
+    unit_mgr = UnitMgr(dfg.imem_layout, dfg.omem_layout, dfg.total_step)
 
     # Load Unit は一意に割り当てられる．
     for node in dfg.memsrcnode_list :

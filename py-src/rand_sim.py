@@ -69,7 +69,7 @@ if __name__ == '__main__' :
             ivals[i] = random.randrange(-128, 128)
         ovals = [ op.eval(ivals) for op in op_list ]
         ovals2 = dfg.simulate(ivals, False)
-        ovals3 = unit_mgr.simulate(ivals, oaddr_list, dfg.total_step, False)
+        ovals3 = unit_mgr.simulate(ivals, oaddr_list, False)
         for i, val in enumerate(ovals) :
             val2 = ovals2[i]
             val3 = ovals3[i] * 0.125

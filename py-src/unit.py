@@ -565,6 +565,11 @@ class RegUnit(Unit) :
     def has_samesrc(self, node) :
         return node.unit.id in self.__cond_map
 
+    ### @brief cstep をキーにソースを保持する辞書を返す．
+    @property
+    def src_map(self) :
+        return self.__src_map
+
     ### @brief ソースの条件の辞書を返す．
     ###
     ### キーはユニット番号で値は cstep のリスト
@@ -606,9 +611,10 @@ class RegUnit(Unit) :
 class UnitMgr :
 
     ### @brief 初期化
-    def __init__(self, imem_layout, omem_layout) :
+    def __init__(self, imem_layout, omem_layout, total_step) :
         self.__imem_layout = imem_layout
         self.__omem_layout = omem_layout
+        self.__total_step = total_step
         self.__unit_list = list()
         self.__lm_dict = dict()
         self.__lu_dict = dict()
@@ -620,6 +626,21 @@ class UnitMgr :
         self.__op1_list = list()
         self.__op2_list = list()
         self.__reg_list = list()
+
+    ### @brief 入力用メモリレイアウトを返す．
+    @property
+    def imem_layout(self) :
+        return self.__imem_layout
+
+    ### @brief 出力用メモリレイアウトを返す．
+    @property
+    def omem_layout(self) :
+        return self.__omem_layout
+
+    ### @brief 全ステップ数を返す．
+    @property
+    def total_step(self) :
+        return self.__total_step
 
     ### @brief 全てのユニットのリストを返す．
     @property
@@ -795,7 +816,7 @@ class UnitMgr :
     ### @brief 動作シミュレーションを行う．
     ### @param[in] ivals 入力値
     ### @return 出力値を納めた辞書を返す．
-    def simulate(self, ivals, oaddr_list, total_step, debug) :
+    def simulate(self, ivals, oaddr_list, debug) :
         global debug_out
         if debug :
             debug_out = sys.stdout
@@ -808,7 +829,7 @@ class UnitMgr :
             lm = self.load_memory(block_id)
             lm.set_val(bank_id, offset, val)
 
-        for step in range(total_step) :
+        for step in range(self.total_step) :
             if debug_out :
                 debug_out.write('simulate@{}\n'.format(step))
             for unit in self.load_unit_list :
