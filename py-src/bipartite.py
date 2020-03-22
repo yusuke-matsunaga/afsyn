@@ -18,7 +18,6 @@ class BiNode :
         self.__edge_list = list()
         self.__alt_edge = None
         self.__value = 0
-        self.__index = -1
 
     ### @brief 枝を追加する．
     def add_edge(self, edge) :
@@ -63,25 +62,15 @@ class BiNode :
     def value(self) :
         return self.__value
 
-    ### @brief ヒープ関係の変数を初期化する．
-    def init_heap(self) :
+    ### @brief 変数を初期化する．
+    def init(self) :
         self.__value = -1
         self.__alt_edge = None
-        self.__index = -1
 
     ### @brief 代わりの枝と価値を登録する．
     def update(self, alt_edge, value) :
         self.__value = value
         self.__alt_edge = alt_edge
-
-    ### @brief ヒープ上のインデックスを返す．
-    @property
-    def index(self) :
-        return self.__index
-
-    ### @brief ヒープ上のインデックスを設定する．
-    def set_index(self, index) :
-        self.__index = index
 
 
 ### @brief 二部グラフの枝を表すクラス
@@ -129,98 +118,6 @@ class BiEdge :
         self.__selected = not self.__selected
 
 
-### @brief 増加路用のヒープ木
-class Heap :
-
-    ### @brief 初期化
-    ### @param[in] max_size 最大サイズ
-    def __init__(self, max_size) :
-        self.__num = 0
-        self.__heap = [ None for i in range(max_size) ]
-
-    ### @brief 要素数を得る．
-    @property
-    def num(self) :
-        return self.__num
-
-    ### @brief 要素を追加する．
-    ### @param[in] node 対象のノード
-    ### @param[in] alt_edge 代わりの枝
-    ### @param[in] value 価値
-    def put(self, node, alt_edge, value) :
-        if node.value >= value :
-            return
-        pos = node.index
-        if pos == -1 :
-            node.update(alt_edge, value)
-            pos = self.__num
-            self.__num += 1
-            self.__heap[pos] = node
-            node.set_index(pos)
-        else :
-            node.update(alt_edge, value)
-        self.move_up(pos)
-
-    ### @brief 最大の要素を取り出す．
-    def get(self) :
-        assert self.num > 0
-        node = self.__heap[0]
-        self.__num -= 1
-        tmp = self.__heap[self.__num]
-        self.__heap[0] = tmp
-        tmp.set_index(0)
-        self.move_down(0)
-        return node
-
-    ### @brief 要素を適切な位置まで上げる．
-    def move_up(self, pos) :
-        while pos > 0 :
-            p_pos = ((pos + 1) // 2) - 1
-            node = self.__heap[pos]
-            p_node = self.__heap[p_pos]
-            if p_node.value < node.value :
-                self.locate(p_pos, node)
-                self.locate(pos, p_node)
-                pos = p_pos
-            else :
-                break
-
-    ### @brief 要素を適切な位置まで下げる．
-    def move_down(self, pos) :
-        while True :
-            l_pos = (pos + 1) * 2 - 1
-            r_pos = l_pos + 1
-            if l_pos >= self.__num :
-                break
-            node = self.__heap[pos]
-            l_node = self.__heap[l_pos]
-            if r_pos >= self.__num :
-                # 右の子供はいない．
-                if l_node.value > node.value :
-                    self.locate(pos, l_node)
-                    self.locate(l_pos, node)
-                break
-            else :
-                r_node = self.__heap[r_pos]
-                if l_node.value > r_node.value :
-                    if l_node.value > node.value :
-                        self.locate(pos, l_node)
-                        self.locate(l_pos, node)
-                        pos = l_pos
-                    break
-                else :
-                    if r_node.value > node.value :
-                        self.locate(pos, r_node)
-                        self.locate(r_pos, node)
-                        pos = r_pos
-                    break
-
-    ### @brief ノードをヒープに置く．
-    def locate(self, pos, node) :
-        self.__heap[pos] = node
-        node.set_index(pos)
-
-
 ### @brief 枝をたどって経路を作る．
 def make_path(edge1, node1) :
     edge2 = node1.selected_edge
@@ -246,39 +143,62 @@ def make_path(edge1, node1) :
 ### 枝から始まり，片方の端が選ばれていない枝で終わる
 ### 奇数長の経路のみ考えればよい．
 def find_path(l_nodes, r_nodes, edge_list) :
-    for node in l_nodes :
-        node.init_heap()
 
-    queue = Heap(len(l_nodes))
+    # まず trivial case として両端が選択されていない枝のなかで
+    # 重み最大のものを見つける．
+    max_weight = 0
+    max_edge = None
+    for edge in edge_list :
+        if not edge.node1.is_selected and not edge.node2.is_selected :
+            if max_weight < edge.weight :
+                max_weight = edge.weight
+                max_edge = edge
+    if max_edge is not None :
+        return [ max_edge ]
+
+    for node in l_nodes :
+        node.init()
+
+    queue = list()
 
     for node1 in l_nodes :
         if not node1.is_selected :
             # 選択されていないノードをキューに積む．
-            queue.put(node1, None, 0)
+            node1.update(None, 0)
+            queue.append(node1)
 
-    # queue から値を大きいノードを取り出して BFS を行う．
+    # queue からノードを取り出して BFS を行う．
     max_value = 0
-    max_path = None
-    not_found = True
-    while not_found and queue.num > 0 :
-        node1 = queue.get()
-        for edge1 in node1.edge_list :
-            if edge1.is_selected :
-                continue
-            value = node1.value + edge1.weight
-            node2 = edge1.node2
-            if not node2.is_selected :
-                # edge1 の端は未選択だった．
-                if max_value < value :
-                    # 増加路になっていれば終わる．
-                    max_value = value
-                    max_path = make_path(edge1, node1)
-                    not_found = False
-            else :
-                edge2 = node2.selected_edge
-                node3 = edge2.node1
-                value -= edge2.weight
-                queue.put(node3, edge1, value)
+    max_path = []
+    while True :
+        queue2 = list()
+        found = False
+        for node1 in queue :
+            for edge1 in node1.edge_list :
+                if edge1.is_selected :
+                    continue
+                value = node1.value + edge1.weight
+                node2 = edge1.node2
+                if not node2.is_selected :
+                    # edge1 の端は未選択だった．
+                    if max_value < value :
+                        # 増加路になっていれば終わる．
+                        max_value = value
+                        max_path = make_path(edge1, node1)
+                        print('max_path = ')
+                        for edge in max_path :
+                            print(' ({}, {})'.format(edge.node1.id, edge.node2.id), end = '')
+                        found = True
+                else :
+                    edge2 = node2.selected_edge
+                    node3 = edge2.node1
+                    value3 = value - edge2.weight
+                    if node3.value < value3 :
+                        node3.update(edge1, value3)
+                        queue2.append(node3)
+        if found or len(queue2) == 0 :
+            break
+        queue = queue2
     return max_path
 
 
@@ -309,16 +229,6 @@ def bipartite_matching(n_l, n_r, src_edge_list) :
         l_node.add_edge(edge)
         r_node.add_edge(edge)
         edge_list.append(edge)
-
-    # 初期マッチングを求める．
-    ne0 = 0
-    v0 = 0
-    for edge in sorted(edge_list, key = lambda edge: edge.weight, reverse = True) :
-        if edge.node1.is_selected or edge.node2.is_selected :
-            continue
-        edge.select()
-        ne0 += 1
-        v0 += edge.weight
 
     # 増加路を見つける．
     while True :
