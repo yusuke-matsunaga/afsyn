@@ -93,7 +93,10 @@ if __name__ == '__main__' :
         if args.test_vector :
             # 入力メモリの内容をダンプする．
             for block in range(imem_layout.block_num) :
-                filename = 'imem{:02d}_{}.hex'.format(block, c)
+                if args.count > 1 :
+                    filename = 'imem{:02d}_{}.hex'.format(block, c)
+                else :
+                    filename = 'imem{:02d}.hex'.format(block)
                 with open(filename, 'wt') as fout :
                     for bank in range(imem_layout.bank_num) :
                         for offset in range(imem_layout.bank_size) :
@@ -109,7 +112,10 @@ if __name__ == '__main__' :
 
             # 出力メモリの内容をダンプする．
             for block in range(omem_layout.block_num) :
-                filename = 'omem{:0d}_{}.hex'.format(block, c)
+                if args.count > 1 :
+                    filename = 'omem{:0d}_{}.hex'.format(block, c)
+                else :
+                    filename = 'omem{:0d}.hex'.format(block)
                 with open(filename, 'wt') as fout :
                     for bank in range(omem_layout.bank_num) :
                         addr = omem_layout.encode(block, bank, 0)
@@ -119,4 +125,3 @@ if __name__ == '__main__' :
                             val = 0
                         uval = (val + 256) % 256
                         fout.write('{:02x}\n'.format(uval))
-                        print('oval[{}|{}:{}] = {}'.format(addr, block, bank, uval))
