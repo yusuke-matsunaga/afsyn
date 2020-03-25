@@ -31,10 +31,10 @@ def reg_bind1(dfg, unit_mgr, var_list) :
                 w = 1
             edge_list.append( (reg.reg_id, i, w) )
 
-    print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), len(var_list), len(edge_list)))
+    #print('matching begin: {}, {}, {}'.format(len(unit_mgr.reg_list), len(var_list), len(edge_list)))
     # 2部グラフの最大マッチングを求める．
     match = bipartite_matching(len(unit_mgr.reg_list), len(var_list), edge_list)
-    print('matching end. total {} matches'.format(len(match)))
+    #print('matching end. total {} matches'.format(len(match)))
 
     bound_vars = set()
     bound_regs = set()
@@ -75,10 +75,10 @@ def reg_bind2(dfg, unit_mgr, var_list) :
             if reg.has_samesrc(var.src) :
                 edge_list.append( (reg.reg_id, i, 1) )
 
-    print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
+    #print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
     # 2部グラフの最大マッチングを求める．
     match = bipartite_matching(unit_mgr.reg_num, nvars, edge_list)
-    print('matching end. total {} matches'.format(len(match)))
+    #print('matching end. total {} matches'.format(len(match)))
 
     bound_vars = set()
     bound_regs = set()
@@ -107,10 +107,10 @@ def reg_bind2(dfg, unit_mgr, var_list) :
                 continue
             edge_list.append( (reg.reg_id, i, 1) )
 
-    print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
+    #print('matching begin: {}, {}, {}'.format(unit_mgr.reg_num, nvars, len(edge_list)))
     # 2部グラフの最大マッチングを求める．
     match = bipartite_matching(unit_mgr.reg_num, nvars, edge_list)
-    print('matching end. total {} matches'.format(len(match)))
+    #print('matching end. total {} matches'.format(len(match)))
 
     # マッチング結果に基づいて割り当てを行う．
     for reg_id, var_id in match :
@@ -162,8 +162,8 @@ def bind_register(dfg, unit_mgr) :
                 rest_var_list.append(var)
         var_list = rest_var_list
 
-        print()
-        print('cluster: {} | {} vars remain'.format(len(cur_var_list), len(var_list)))
+        #print()
+        #print('cluster: {} | {} vars remain'.format(len(cur_var_list), len(var_list)))
         reg_bind2(dfg, unit_mgr, cur_var_list)
 
 

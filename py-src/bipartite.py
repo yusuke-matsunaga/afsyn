@@ -185,9 +185,6 @@ def find_path(l_nodes, r_nodes, edge_list) :
                         # 増加路になっていれば終わる．
                         max_value = value
                         max_path = make_path(edge1, node1)
-                        print('max_path = ')
-                        for edge in max_path :
-                            print(' ({}, {})'.format(edge.node1.id, edge.node2.id), end = '')
                         found = True
                 else :
                     edge2 = node2.selected_edge

@@ -346,6 +346,10 @@ class StoreUnit(Unit) :
     ### @brief シミュレーション時刻を進める．
     def sync(self) :
         if self.__next_value is not None :
+            if debug_out :
+                debug_out.write('{}.sync()\n'.format(self.name))
+                debug_out.write('  bank = {}\n'.format(self.__next_bank_id))
+                debug_out.write('  val  = {}\n'.format(self.__next_value))
             self.__block.set_val(self.__next_bank_id, 0, self.__next_value)
             self.__next_bank_id = None
             self.__next_value = None
@@ -363,6 +367,11 @@ class ThroughUnit(Unit) :
     @property
     def name(self) :
         return 'THROUGH'
+
+    ### @brief ソースを返す．
+    @property
+    def src(self) :
+        return self.__src
 
     ### @brief シミュレーションを行う．
     ### @param[in] step
@@ -425,7 +434,11 @@ class Op1Unit(Unit) :
             if src is None :
                 continue
             if debug_out :
-                debug_out.write('   #{}: {}:{}\n'.format(i, src.name, src.value))
+                if step in self.__inv_cond_list[i] :
+                    neg = True
+                else :
+                    neg = False
+                debug_out.write('   #{}: {}:{},{}\n'.format(i, src.name, src.value, neg))
             if step in self.__inv_cond_list[i] :
                 val += ~src.value
             else :
@@ -433,6 +446,12 @@ class Op1Unit(Unit) :
         if debug_out :
             debug_out.write('  => {}\n'.format(val))
         return val
+
+def uconv(src, bit_width) :
+    if src >= 0 :
+        return src
+    else :
+        return src + (1 << bit_width)
 
 
 ### @brief OP2ユニット
@@ -493,13 +512,15 @@ class Op2Unit(Unit) :
             if src is None :
                 continue
             if debug_out :
-                debug_out.write('    #{}: src = {}: {}\n'.format(i, src.name, src.value))
+                debug_out.write('    #{}: src = {}: {}({})\n'.format(i, src.name, src.value, uconv(src.value, 12)))
             assert src.value is not None
             val += src.value
         val += self.__bias_map[step]
+        oval = int(val) >> 3
         if debug_out :
-            debug_out.write('  => {}\n'.format(val))
-        return val
+            debug_out.write('    BIAS: {}\n'.format(self.__bias_map[step]))
+            debug_out.write('  => {}|{}({})\n'.format(val, oval, uconv(oval, 8)))
+        return oval
 
 
 ### @brief レジスタの仕様を表すクラス

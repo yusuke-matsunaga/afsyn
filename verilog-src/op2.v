@@ -20,7 +20,9 @@ module op2(input [11:0]  data0_in,
 	   input [11:0]  data13_in,
 	   input [11:0]  data14_in,
 	   input [11:0]  data15_in,
-	   output [15:0] data_out);
+	   output [11:0] data_out);
+
+   wire [15:0] 		 tmp_out;
 
    add16_2 add16(.data0x(data0_in),
 		 .data1x(data1_in),
@@ -38,6 +40,9 @@ module op2(input [11:0]  data0_in,
 		 .data13x(data13_in),
 		 .data14x(data14_in),
 		 .data15x(data15_in),
-		 .result(data_out));
+		 .result(tmp_out));
+   // 出力は3ビットシフトした上で結果を12ビットにトリミングしている．
+   // 最終的にはさらに上位4ビットを落としている．
+   assign data_out = tmp_out[14:3];
 
 endmodule

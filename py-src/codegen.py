@@ -37,16 +37,12 @@ class CodeGen :
         imem_rd_name_list = [ 'imem{:02d}_rd'.format(i) for i in range(iblock_num) ]
 
         # imem の i 番目の出力ポート
-        if ibank_size > 1 :
-            imem_in_name_list = [ [ 'imem{:02d}_in{:02d}'.format(i, j) for j in range(ibank_size) ] for i in range(iblock_num) ]
-        else :
-            imem_in_name_list = [ [ 'imem{:02d}_in'.format(i) ] for i in range(iblock_num) ]
+        imem_in_name_list = [ 'imem{:02d}_in'.format(i) for i in range(iblock_num) ]
         for i in range(iblock_num) :
             if ibank_bw > 0 :
                 io_list.append('output [{}:0] {}'.format(ibank_bw - 1, imem_bank_name_list[i]))
             io_list.append('output {}'.format(imem_rd_name_list[i]))
-            for j in range(ibank_size) :
-                io_list.append('input [7:0] {}'.format(imem_in_name_list[i][j]))
+            io_list.append('input [255:0] {}'.format(imem_in_name_list[i]))
 
         # 出力用メモリの諸元
         oblock_num = unit_mgr.omem_layout.block_num
@@ -63,16 +59,12 @@ class CodeGen :
         omem_wr_name_list = [ 'omem{:02d}_wr'.format(i) for i in range(oblock_num) ]
 
         # omem の i 番目の入力ポート
-        if obank_size > 1 :
-            omem_out_name_list = [ [ 'omem{:02d}_out{:02d}'.format(i, j) for j in range(obank_size) ] for i in range(oblock_num) ]
-        else :
-            omem_out_name_list = [ [ 'omem{:02d}_out'.format(i) ] for i in range(oblock_num) ]
+        omem_out_name_list = [ 'omem{:02d}_out'.format(i) for i in range(oblock_num) ]
         for i in range(oblock_num) :
             if obank_bw > 0 :
                 io_list.append('output [{}:0] {}'.format(obank_bw - 1, omem_bank_name_list[i]))
             io_list.append('output {}'.format(omem_wr_name_list[i]))
-            for j in range(obank_size) :
-                io_list.append('output [7:0] {}'.format(omem_out_name_list[i][j]))
+            io_list.append('output [7:0] {}'.format(omem_out_name_list[i]))
 
         # モジュールの開始
         self.__begin_module(module_name, io_list)
@@ -84,7 +76,9 @@ class CodeGen :
         for lu in unit_mgr.load_unit_list :
             block_id = lu.block_id
             offset = lu.offset
-            in_name = imem_in_name_list[block_id][offset]
+            msb = offset * 8 + 7
+            lsb = offset * 8
+            in_name = '{}[{}:{}]'.format(imem_in_name_list[block_id], msb, lsb)
             src_name_dict[lu.id] = in_name
 
         # OP1 モジュールのインスタンス宣言
@@ -145,7 +139,7 @@ class CodeGen :
             op2_bias_name_list.append(bias_name)
             self.__fout.write('  reg [11:0] {};\n'.format(bias_name))
             out_name = 'op2_{:02d}_out'.format(i)
-            self.__fout.write('  wire [15:0] {};\n'.format(out_name))
+            self.__fout.write('  wire [11:0] {};\n'.format(out_name))
             op2_name = 'op2_{:02d}'.format(i)
             op2_name_list.append(op2_name)
             self.__fout.write('  op2 {}(\n'.format(op2_name))
@@ -181,7 +175,7 @@ class CodeGen :
         self.__fout.write('  // 制御マシンの動作\n')
         self.__fout.write('  always @ ( posedge clock or negedge reset ) begin\n')
         self.__fout.write('    if ( !reset ) begin\n')
-        self.__fout.write('      busy <= 0;\n')
+        self.__fout.write('      _busy <= 0;\n')
         self.__fout.write('      state <= 0;\n')
         self.__fout.write('    end\n')
         self.__fout.write('    else if ( _busy ) begin\n')
@@ -191,6 +185,7 @@ class CodeGen :
         self.__fout.write('      else begin\n')
         self.__fout.write('        _busy <= 0;\n')
         self.__fout.write('        state <= 0;\n')
+        self.__fout.write('      end\n')
         self.__fout.write('    end\n')
         self.__fout.write('    else if ( start ) begin\n')
         self.__fout.write('      _busy <= 1;\n')
@@ -199,36 +194,64 @@ class CodeGen :
 
         # 入力用メモリの制御
         for lm in unit_mgr.load_memory_list :
+            bank_name = imem_bank_name_list[lm.block_id]
+            tmp_name = '_{}'.format(bank_name)
             self.__fout.write('\n')
             self.__fout.write('  // {}番目の入力用メモリブロックの制御\n'.format(lm.block_id))
-            self.__fout.write('  always @ ( * ) begin\n')
-            bank_name = imem_bank_name_list[lm.block_id]
+            self.__fout.write('  reg [{}:0] {};\n'.format((ibank_bw - 1), tmp_name))
             src_dict = dict()
             for step, bank in lm.bank_dict.items() :
                 src_dict[step] = bank
-            self.__gen_control(bank_name, src_dict, 'X')
+            self.__gen_control(tmp_name, src_dict, 0)
+            self.__fout.write('  assign {} = {};\n'.format(bank_name, tmp_name))
 
             rd_name = imem_rd_name_list[lm.block_id]
+            tmp_name = '_{}'.format(rd_name)
+            self.__fout.write('  reg {};\n'.format(tmp_name))
             src_dict = dict()
             for step, bank in lm.bank_dict.items() :
                 src_dict[step] = 1
-            self.__gen_control(rd_name, src_dict, 0)
+            self.__gen_control(tmp_name, src_dict, 0)
+            self.__fout.write('  assign {} = {};\n'.format(rd_name, tmp_name))
 
         # 出力用メモリの制御
         for sm in unit_mgr.store_memory_list :
+            bank_name = omem_bank_name_list[sm.block_id]
+            tmp_name = '_{}'.format(bank_name)
             self.__fout.write('\n')
             self.__fout.write('  // {}番目の出力用メモリブロックの制御\n'.format(sm.block_id))
-            bank_name = omem_bank_name_list[sm.block_id]
+            self.__fout.write('  reg [{}:0] {};\n'.format((obank_bw - 1), tmp_name))
             src_dict = dict()
             for step, bank in sm.bank_dict.items() :
                 src_dict[step] = bank
-            self.__gen_control(bank_name, src_dict, 'X')
+            self.__gen_control(tmp_name, src_dict, 0)
+            self.__fout.write('  assign {} = {};\n'.format(bank_name, tmp_name))
 
             wr_name = omem_wr_name_list[sm.block_id]
+            tmp_name = '_{}'.format(wr_name)
+            self.__fout.write('  reg {};\n'.format(tmp_name))
             src_dict = dict()
             for step, bank in sm.bank_dict.items() :
-                src_dict[step] = bank
-            self.__gen_control(wr_name, src_dict, 0)
+                src_dict[step] = 1
+            self.__gen_control(tmp_name, src_dict, 0)
+            self.__fout.write('  assign {} = {};\n'.format(wr_name, tmp_name))
+
+        for su in unit_mgr.store_unit_list :
+            sm = su.block
+            out_name = omem_out_name_list[sm.block_id]
+            tmp_name = '_{}'.format(out_name)
+            self.__fout.write('  reg [11:0] {};\n'.format(tmp_name))
+            src_dict = dict()
+            mux = su.mux_spec(0)
+            for src in mux.src_list :
+                for step in mux.src_cond(src) :
+                    if src.name == 'THROUGH' :
+                        src_name = src_name_dict[src.src.id]
+                    else :
+                        src_name = src_name_dict[src.id]
+                    src_dict[step] = src_name
+            self.__gen_control(tmp_name, src_dict, 0)
+            self.__fout.write('  assign {} = {}[7:0];\n'.format(out_name, tmp_name))
 
         # OP1 の制御
         for op_id in range(nop1) :
@@ -314,7 +337,7 @@ class CodeGen :
             ibank_bw += 1
         ibank_size = unit_mgr.imem_layout.bank_size
 
-        // affine モジュールのインスタンス
+        # affine モジュールのインスタンス
         for i in range(iblock_num) :
             self.__fout.write('  wire [{}:0] {};\n'.format(ibank_bw - 1, imem_bank_name_list[i]))
             self.__fout.write('  wire [7:0] {};\n'.format(imem_in_name_list[i][j]))
@@ -386,8 +409,8 @@ if __name__ == '__main__' :
     #block_num = 24
     block_num = 12
     bank_size = 32
-    print('Block num: {}'.format(block_num))
-    print('Bank Size: {}'.format(bank_size))
+    #print('Block num: {}'.format(block_num))
+    #print('Bank Size: {}'.format(bank_size))
 
     bsize = block_num * bank_size
     imemory_size = ((mem_size + bsize - 1) // bsize) * bsize
