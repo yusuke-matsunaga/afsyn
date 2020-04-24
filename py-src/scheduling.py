@@ -164,7 +164,7 @@ def group_scheduling(op2node_list, base_step) :
     total_num = 0
     for node in op2node_list :
         for op1node in node.fanin_list :
-            total_num += len(op1node.fanin_list)
+            total_num += op1node.fanin_num
 
     mem_usage = dict()
     memsink_usage = dict()
@@ -214,7 +214,7 @@ def list_scheduling3(dfg, op_limit) :
     op2node_list = list()
     op1_num = 0
     for op2node in dfg.op2node_list :
-        n = len(op2node.fanin_list)
+        n = op2node.fanin_num
         if op1_num + n <= op_limit :
             op2node_list.append(op2node)
             op1_num += n
@@ -276,14 +276,9 @@ def eval_schedule(dfg) :
 
 
 ### @brief スケジューリングを行う．
-### @param[in] op_list 演算リスト
-### @param[in] op_limit OP1タイプの演算器の個数
-### @param[in] mem_layout メモリレイアウト
 ### @param[in] method メソッド名
 ### @return スケジューリング後の DFG を返す．
-def scheduling(op_list, op_limit, mem_layout, omem_layout, s_method) :
-    # 演算の分割を行い DFG を作る．
-    dfg = make_graph(op_list, mem_layout, omem_layout)
+def scheduling(dfg, op_limit, s_method) :
 
     # スケジューリングを行う．
     if s_method == 1 :
@@ -329,28 +324,30 @@ if __name__ == '__main__' :
         print('read failed.')
         exit(1)
 
-    mem_size = 0
+    imem_size = 0
     for op in op_list :
         for i_id, w in op.fanin_list :
-            if mem_size < i_id :
-                mem_size = i_id
-    mem_size += 1
+            if imem_size < i_id :
+                imem_size = i_id
+    imem_size += 1
 
-    omemory_size = len(op_list)
+    iblock_num = 12
+    iblock_size = 128
+    ibank_size = 32
+    imem_layout = MemLayout(imem_size, iblock_num, iblock_size, ibank_size)
+
+    omem_size = len(op_list)
     oblock_num = 8
+    oblock_size = 125
     obank_size = 1
-    omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
+    omem_layout = MemLayout(omem_size, oblock_num, oblock_size, obank_size)
 
-    for block_num, bank_size in ((24, 16), (24, 32), (12, 16), (12, 32), (6, 16), (6, 32)) :
-        print()
-        print('Block Num: {}'.format(block_num))
-        print('Bank Size: {}'.format(bank_size))
-        for m_method in (1, 2) :
-            mem_layout = MemLayout(mem_size, block_num, bank_size, m_method)
-            print()
-            print('Memory model #{}'.format(m_method))
-            for op_limit in (16, 32, 64, 128) :
-                for s_method in (3,) :
-                    dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
-                    print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
-                    print_schedule(dfg, sys.stdout)
+    # 演算の分割を行い DFG を作る．
+    op1_limit = 16
+    op2_limit = 15
+    for op_limit in (16, 32, 64, 128) :
+        for s_method in (3,) :
+            dfg = make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout)
+            dfg = scheduling(dfg, op_limit, s_method)
+            print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
+            print_schedule(dfg, sys.stdout)

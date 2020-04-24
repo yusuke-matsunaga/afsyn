@@ -181,9 +181,10 @@ def input_binding(src_set_dict, max_fanin) :
         bound_src_list = [ (None, False) for i in range(max_fanin) ]
         dup_list = list()
         for src, w in src_list :
-            inv = True if w == -0.125 else False
-            if w == 0.25 :
-                dup_list.append(src)
+            assert w == -0.25 or -0.125 or 0.125 or 0.25
+            inv = True if w < 0 else False
+            if w == 0.25 or w == -0.25 :
+                dup_list.append( (src, inv) )
             # すでに同じレジスタを持つ入力があったらそこに割り当てる．
             for i in range(max_fanin) :
                 if src in sel_src_set[i] :
@@ -202,11 +203,14 @@ def input_binding(src_set_dict, max_fanin) :
                             last_i = i
                         break
                 else :
+                    print('max_fanin = {}'.format(max_fanin))
+                    for i, (src, w) in enumerate(src_list) :
+                        print('#{}  {}:{}'.format(i, src.name, w))
                     assert False
-        for src in dup_list :
+        for src, inv in dup_list :
             for i in range(max_fanin) :
                 if i not in used :
-                    bound_src_list[i] = src, False
+                    bound_src_list[i] = src, inv
                     used.add(i)
                     if last_i < i :
                         last_i = i
@@ -245,7 +249,7 @@ def alloc_op1_selecter(dfg, unit_mgr) :
         # cstep をキーにしたファンインのレジスタ番号のリストの辞書
         src_set_dict = src_set_list[op.op_id]
         # 入力のバインディングを行う．
-        sel_src_dict = input_binding(src_set_dict, 16)
+        sel_src_dict = input_binding(src_set_dict, dfg.op1_limit)
         n = len(sel_src_dict)
         for i, sel_src in enumerate(sel_src_dict) :
             for cstep, (src, inv) in sel_src.items() :
@@ -289,8 +293,9 @@ def alloc_op2_selecter(dfg, unit_mgr) :
     for op in unit_mgr.op2_list :
         src_set = src_set_list[op.op_id]
         # 入力のバインディングを行う．
-        sel_src_list = input_binding(src_set, 15)
+        sel_src_list = input_binding(src_set, dfg.op2_limit)
         n = len(sel_src_list)
+        assert n <= dfg.op2_limit
         for i, sel_src in enumerate(sel_src_list) :
             for cstep, (src, inv) in sel_src.items() :
                 op.add_src(i, src, cstep)
@@ -325,7 +330,7 @@ def bind(dfg) :
         step = node.cstep
         pos = op1_count[step]
         while unit_mgr.op1_num <= pos :
-            unit_mgr.new_op1_unit(16)
+            unit_mgr.new_op1_unit(dfg.op1_limit)
         op = unit_mgr.op1(pos)
         node.bind(op)
         op.bind(node, step)
@@ -336,7 +341,7 @@ def bind(dfg) :
         step = node.cstep
         pos = op2_count[step]
         while unit_mgr.op2_num <= pos :
-            unit_mgr.new_op2_unit(15)
+            unit_mgr.new_op2_unit(dfg.op2_limit)
         op = unit_mgr.op2(pos)
         node.bind(op)
         op.bind(node, step)
@@ -399,6 +404,8 @@ if __name__ == '__main__' :
     s_conf = (1, 2, 3)
     s_conf = (2,)
 
+    op1_limit = 16
+    op2_limit = 15
     omemory_size = len(op_list)
     oblock_num = 8
     obank_size = 1
@@ -412,8 +419,9 @@ if __name__ == '__main__' :
             mem_layout = MemLayout(mem_size, block_num, bank_size, m_method)
             print()
             print('Memory model #{}'.format(m_method))
+            dfg = make_graph(op_list, op1_limit, op2_limit, mem_layout, omem_layout)
             for op_limit in op1_conf :
                 for s_method in s_conf :
-                    dfg = scheduling(op_list, op_limit, mem_layout, omem_layout, s_method)
+                    dfg = scheduling(dfg, s_method)
                     print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
                     unit_mgr = bind(dfg)

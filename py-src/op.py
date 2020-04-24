@@ -55,7 +55,7 @@ class Op :
         for i_id, w in self.__fanin_list :
             fout.write('{} ({}, {})'.format(comma, i_id, w))
             comma = ','
-        fwout.write('\n')
+        fout.write('\n')
 
 
     ### @brief dump したファイルを読み込む．
@@ -75,6 +75,9 @@ class Op :
 
             line = line.rstrip()
             if line == '' :
+                continue
+
+            if line[0] == '#' :
                 continue
 
             m = pID.match(line)

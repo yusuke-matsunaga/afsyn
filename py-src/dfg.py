@@ -40,9 +40,14 @@ class Node :
     def unit(self) :
         return self.__unit
 
+    ### @brief ファンイン数を返す．
+    @property
+    def fanin_num(self) :
+        return len(self.__fanin_list)
+
     ### @brief ファンインを返す．
     def fanin(self, pos) :
-        return fself.__fanin_list[pos]
+        return self.__fanin_list[pos]
 
     ### @brief ファンインノードのリスト
     @property
@@ -290,6 +295,8 @@ class Op1Node(OpNode) :
                 ival1 = ~ival
             elif w == 0.25 :
                 ival1 = ival + ival
+            elif w == -0.25 :
+                ival1 = ~ival + ~ival
             else :
                 print('w = {}'.format(w))
                 assert False
@@ -322,8 +329,10 @@ class Op2Node(OpNode) :
         bias = 0
         for inode in self.fanin_list :
             for w in inode.weight_list :
-                if w < 0 :
+                if w == -0.125 :
                     bias += 1
+                elif w == -0.25 :
+                    bias += 2
         self.__bias = bias
 
     ### @brief OP2ノードのとき True を返す．
@@ -475,7 +484,9 @@ class DFG :
     ### @brief 初期化
     ###
     ### 空のグラフを生成する．
-    def __init__(self, imem_layout, omem_layout) :
+    def __init__(self, op1_limit, op2_limit, imem_layout, omem_layout) :
+        self.__op1_limit = op1_limit
+        self.__op2_limit = op2_limit
         self.__imem_layout = imem_layout
         self.__omem_layout = omem_layout
         self.__node_list = []
@@ -488,6 +499,16 @@ class DFG :
         self.__op2_num = 0
         self.__reg_num = 0
         self.__var_list = []
+
+    ### @brief OP1ノードのファンイン数制約を返す．
+    @property
+    def op1_limit(self) :
+        return self.__op1_limit
+
+    ### @brief OP2ノードのファンイン数制約を返す．
+    @property
+    def op2_limit(self) :
+        return self.__op2_limit
 
     ### @brief 入力用メモリレイアウトを返す．
     @property
@@ -551,11 +572,21 @@ class DFG :
     def omem_layout(self) :
         return self.__omem_layout
 
+    ### @brief 全ノード数を返す．
+    @property
+    def node_num(self) :
+        return len(self.__node_list)
+
     ### @brief 全ノードのリストを返す．
     @property
     def node_list(self) :
         for node in self.__node_list :
             yield node
+
+    ### @brief メモリソースノード数を返す．
+    @property
+    def memsrcnode_num(self) :
+        return len(self.__memsrcnode_list)
 
     ### @brief メモリソースノードのリストを返す．
     @property
@@ -563,17 +594,32 @@ class DFG :
         for node in self.__memsrcnode_list :
             yield node
 
+    ### @brief メモリシンクノード数を返す．
+    @property
+    def memsinknode_num(self) :
+        return len(self.__memsinknode_list)
+
     ### @brief メモリシンクノードのリストを返す．
     @property
     def memsinknode_list(self) :
         for node in self.__memsinknode_list :
             yield node
 
+    ### @brief OP1ノード数を返す．
+    @property
+    def op1node_num(self) :
+        return len(self.__op1node_list)
+
     ### @brief OP1ノードのリストを返す．
     @property
     def op1node_list(self) :
         for node in self.__op1node_list :
             yield node
+
+    ### @brief OP2ノード数を返す．
+    @property
+    def op2node_num(self) :
+        return len(self.__op2node_list)
 
     ### @brief OP2ノードのリストを返す．
     @property
@@ -760,23 +806,28 @@ class DFG :
 
 ### @brief DFG を作る
 ### @param[in] op_list 演算リスト
+### @param[in] op1_limit OP1のファンイン数
+### @param[in] op2_limit OP2のファンイン数
 ### @param[in] imem_layout 入力メモリレイアウト
 ### @param[in] omem_layout 出力メモリレイアウト
 ### @return DFG を返す．
-def make_graph(op_list, imem_layout, omem_layout) :
-    dfg = DFG(imem_layout, omem_layout)
+def make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout) :
+    dfg = DFG(op1_limit, op2_limit, imem_layout, omem_layout)
     for o_id, op in enumerate(op_list) :
         l1_fanin_list = []
         l1_fanin_num = 0
         l1_weight_list = []
         l2_fanin_list = []
+
+        assert len(op.fanin_list) <= op1_limit * op2_limit
+
         for i_id, w in op.fanin_list :
             mem_node = dfg.make_memsrc(i_id)
-            if w == 0.25 :
+            if w == 0.25 or w == -0.25 :
                 n = 2
             else :
                 n = 1
-            if l1_fanin_num + n >= 16 :
+            if l1_fanin_num + n >= op1_limit :
                 op_node = dfg.make_op1(l1_fanin_list, l1_weight_list)
                 l2_fanin_list.append(op_node)
                 l1_fanin_list = []
@@ -789,6 +840,15 @@ def make_graph(op_list, imem_layout, omem_layout) :
         if l1_fanin_num > 0 :
             op_node = dfg.make_op1(l1_fanin_list, l1_weight_list)
             l2_fanin_list.append(op_node)
+
+        if len(l2_fanin_list) > op2_limit :
+            print('l2_fanin_list: {}'.format(len(l2_fanin_list)))
+            print('op2_limit: {}'.format(op2_limit))
+            print('op.fanin_list: {}'.format(len(op.fanin_list)))
+            for op1 in l2_fanin_list :
+                print(' op1.fanin_list: {}'.format(op1.fanin_num))
+            print()
+        assert len(l2_fanin_list) <= op2_limit
         node = dfg.make_op2(l2_fanin_list)
         for inode in l2_fanin_list :
             inode.set_fanout(node)
@@ -829,12 +889,14 @@ if __name__ == '__main__' :
     omemory_size = len(op_list)
     oblock_num = 8
     obank_size = 1
+    op1_limit = 32
+    op2_limit = 31
     omem_layout = MemLayout(omemory_size, oblock_num, obank_size)
-    dfg = make_graph(op_list, imem_layout, omem_layout)
-    print('# of nodes: {}'.format(len(dfg.node_list)))
-    print('# of OP1 nodes: {}'.format(len(dfg.op1node_list)))
-    print('# of OP2 nodes: {}'.format(len(dfg.op2node_list)))
-    print('# of MemSink:   {}'.format(len(dfg.memsinknode_list)))
+    dfg = make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout)
+    print('# of nodes: {}'.format(dfg.node_num))
+    print('# of OP1 nodes: {}'.format(dfg.op1node_num))
+    print('# of OP2 nodes: {}'.format(dfg.op2node_num))
+    print('# of MemSink:   {}'.format(dfg.memsinknode_num))
 
     for node in dfg.memsrcnode_list :
         print('[MEMSRC] #{}: {}-{}-{}'.format(node.id, node.block_id, node.bank_id, node.offset))

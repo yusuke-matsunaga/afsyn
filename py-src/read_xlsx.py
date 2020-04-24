@@ -69,8 +69,16 @@ def read_xlsx(filename) :
             op_dict[oid] = op
         op.add_fanin(iid, w)
 
-    assert i_min == 0
-    assert o_min == 0
+    #assert i_min == 0
+    #assert o_min == 0
+    print('# i_min = {}'.format(i_min))
+    print('# i_max = {}'.format(i_max))
+    print('# o_min = {}'.format(o_min))
+    print('# o_max = {}'.format(o_max))
+    print('# weights =', end = '')
+    for w in sorted(w_set) :
+        print(' {}'.format(w), end = '')
+    print()
 
     op_list = [ op_dict[oid] for oid in range(o_max + 1) ]
 
