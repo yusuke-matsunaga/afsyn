@@ -29,6 +29,9 @@ if __name__ == '__main__' :
     if not args :
         exit(1)
 
+    # デバッグフラグ
+    debug = args.debug
+
     filename = '../data/Affine_W.op'
     with open(filename, 'rt') as fin :
         op_list = Op.read(fin)
@@ -36,60 +39,69 @@ if __name__ == '__main__' :
             print('read failed.')
             exit(1)
 
-    # メモリサイズの計算
-    mem_size = 0
-    for op in op_list :
-        for i_id, w in op.fanin_list :
-            if mem_size < i_id :
-                mem_size = i_id
-    mem_size += 1
-
-    imemory_size = 1500
+    # 入力の仕様
+    imemory_size = 1536
     block_num = 12
     block_size = 128
     bank_size = 32
     imem_layout = MemLayout(imemory_size, block_num, block_size, bank_size)
 
-    omemory_size = len(op_list)
+    # 出力の仕様
+    omemory_size = 1000
     oblock_num = 8
     oblock_size = 125
     obank_size = 1
     omem_layout = MemLayout(omemory_size, oblock_num, oblock_size, obank_size)
     oaddr_list = [ i for i in range(omemory_size) ]
 
+    # OP1 の入力数
     op1_limit = 16
+
+    # OP2 の入力数
     op2_limit = 15
 
+    # DFG を作る．
     dfg = make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout)
 
+    # OP1 の個数制約
     op_limit = 16
+
+    # スケジューリングを行う．
     s_method = 2
     dfg = scheduling(dfg, op_limit, s_method)
-    #dfg.print()
+    dfg.print()
+
+    # バインディングを行う．
     unit_mgr = bind(dfg)
-    #unit_mgr.print(sys.stdout)
+    unit_mgr.print(sys.stdout)
 
     random.seed(1234)
 
-    debug = args.debug
+    debug_dfg = debug
+    debug_rtl = debug
     for c in range(args.count) :
-        ivals = dict()
-        for i in range(mem_size) :
-            ivals[i] = random.randrange(-128, 128)
-        ovals = [ op.eval(ivals) for op in op_list ]
-        ovals2 = dfg.simulate(ivals, False)
-        ovals3 = unit_mgr.simulate(ivals, oaddr_list, debug)
-        for i, val in enumerate(ovals) :
+        # 入力値をランダムに生成する．
+        ivals = { i: random.randrange(-128, 128) for i in range(imemory_size) }
+        # 出力値の参考値を求める．
+        ovals1 = [ op.eval(ivals) for op in op_list ]
+        # DFG のレベルで値を求める．
+        ovals2 = dfg.simulate(ivals, debug_dfg)
+        # RTL のレベルで値を求める．
+        ovals3 = unit_mgr.simulate(ivals, oaddr_list, debug_rtl)
+
+        # 値を比較する．
+        for i in range(omemory_size) :
+            val1 = ovals1[i]
             val2 = ovals2[i]
             val3 = ovals3[i]
             error = 0
-            if val2 != val :
+            if val2 != val1 :
                 error |= 1
-            if val3 != int(math.floor(val)) :
+            if val3 != int(math.floor(val1)) :
                 error |= 2
             if error :
                 print('Error at O[{}]:'.format(i))
-                print('  expected value = {}'.format(val))
+                print('  expected value = {}'.format(val1))
                 if error & 1 :
                     print('  DFG value = {}'.format(val2))
                 if error & 2 :

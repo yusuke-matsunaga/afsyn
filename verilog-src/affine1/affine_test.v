@@ -2,23 +2,23 @@
 `timescale 1ns/1ns
 
 // ダミーの8ビット入力12ビット出力の16入力加算器
-module add16(input [7:0]   data0x,
-	     input [7:0]   data1x,
-	     input [7:0]   data2x,
-	     input [7:0]   data3x,
-	     input [7:0]   data4x,
-	     input [7:0]   data5x,
-	     input [7:0]   data6x,
-	     input [7:0]   data7x,
-	     input [7:0]   data8x,
-	     input [7:0]   data9x,
-	     input [7:0]   data10x,
-	     input [7:0]   data11x,
-	     input [7:0]   data12x,
-	     input [7:0]   data13x,
-	     input [7:0]   data14x,
-	     input [7:0]   data15x,
-	     output [11:0] result);
+module add8_16(input [7:0]   data0x,
+	       input [7:0]   data1x,
+	       input [7:0]   data2x,
+	       input [7:0]   data3x,
+	       input [7:0]   data4x,
+	       input [7:0]   data5x,
+	       input [7:0]   data6x,
+	       input [7:0]   data7x,
+	       input [7:0]   data8x,
+	       input [7:0]   data9x,
+	       input [7:0]   data10x,
+	       input [7:0]   data11x,
+	       input [7:0]   data12x,
+	       input [7:0]   data13x,
+	       input [7:0]   data14x,
+	       input [7:0]   data15x,
+	       output [11:0] result);
 
    wire [11:0] 		   in0 = {{4{data0x[7]}}, data0x};
    wire [11:0] 		   in1 = {{4{data1x[7]}}, data1x};
@@ -58,23 +58,23 @@ module add16(input [7:0]   data0x,
 endmodule // add16
 
 // ダミーの12ビット入力16ビット出力の16入力加算器
-module add16_2(input [11:0]  data0x,
-	       input [11:0]  data1x,
-	       input [11:0]  data2x,
-	       input [11:0]  data3x,
-	       input [11:0]  data4x,
-	       input [11:0]  data5x,
-	       input [11:0]  data6x,
-	       input [11:0]  data7x,
-	       input [11:0]  data8x,
-	       input [11:0]  data9x,
-	       input [11:0]  data10x,
-	       input [11:0]  data11x,
-	       input [11:0]  data12x,
-	       input [11:0]  data13x,
-	       input [11:0]  data14x,
-	       input [11:0]  data15x,
-	       output [15:0] result);
+module add12_16(input [11:0]  data0x,
+		input [11:0]  data1x,
+		input [11:0]  data2x,
+		input [11:0]  data3x,
+		input [11:0]  data4x,
+		input [11:0]  data5x,
+		input [11:0]  data6x,
+		input [11:0]  data7x,
+		input [11:0]  data8x,
+		input [11:0]  data9x,
+		input [11:0]  data10x,
+		input [11:0]  data11x,
+		input [11:0]  data12x,
+		input [11:0]  data13x,
+		input [11:0]  data14x,
+		input [11:0]  data15x,
+		output [15:0] result);
 
    wire [15:0] 		     in0 = {{4{data0x[11]}}, data0x};
    wire [15:0] 		     in1 = {{4{data1x[11]}}, data1x};

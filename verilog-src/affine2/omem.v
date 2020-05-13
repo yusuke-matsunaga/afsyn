@@ -5,13 +5,13 @@
 // rd:   読み出し制御
 // outX: X番目の読み出し口
 module omem(input        clock,
-	    input [6:0]  bank,
+	    input [5:0]  bank,
 	    input 	 rd,
 	    input 	 wr,
 	    input [8:0]  in,
 	    output [8:0] out);
 
-   reg [8:0] 		 memblock[0:74];
+   reg [8:0] 		 memblock[0:59];
    reg [8:0] 		 tmp_out;
    always @ ( posedge clock ) begin
       if ( wr ) begin

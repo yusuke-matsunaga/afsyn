@@ -12,12 +12,12 @@ if __name__ == '__main__' :
     import os
     import random
     import argparse
-    from op import Op
-    from dfg import make_graph
-    from scheduling import scheduling
-    from mem_layout import MemLayout
-    from binder import bind
-    from codegen import CodeGen
+    from afsyn import Op
+    from afsyn import make_graph
+    from afsyn import scheduling
+    from afsyn import MemLayout
+    from afsyn import bind
+    from afsyn import CodeGen
 
     filename = '../data/Affine_W.op'
     with open(filename, 'rt') as fin :
@@ -61,4 +61,6 @@ if __name__ == '__main__' :
 
     codegen = CodeGen(sys.stdout)
     module_name = 'affine'
-    codegen.generate(unit_mgr, module_name)
+    op1_module_name = 'affine_op1'
+    op2_module_name = 'affine_op2'
+    codegen.generate(unit_mgr, module_name, op1_module_name, op2_module_name)
