@@ -587,16 +587,6 @@ class DFG :
         self.__op2node_list.append(node)
         return node
 
-    ### @brief 入力のメモリレイアウトを返す．
-    @property
-    def imem_layout(self) :
-        return self.__imem_layout
-
-    ### @brief 出力のメモリレイアウトを返す．
-    @property
-    def omem_layout(self) :
-        return self.__omem_layout
-
     ### @brief 全ノード数を返す．
     @property
     def node_num(self) :
