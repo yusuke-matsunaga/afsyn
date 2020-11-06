@@ -317,15 +317,11 @@ def print_schedule(dfg, fout) :
 if __name__ == '__main__' :
     import sys
     import os
-    from op import Op
-    from mem_layout import MemLayout
+    from afsyn import Op
+    from afsyn import make_graph
+    from afsyn import MemLayout
 
-    if len(sys.argv) != 2 :
-        print('USAGE: {} <filename>'.format(os.path.basename(sys.argv[0])))
-        exit(1)
-
-    filename = sys.argv[1]
-    op_list = None
+    filename = '../data/Affine_W.op'
     with open(filename, 'rt') as fin :
         op_list = Op.read(fin)
 
@@ -355,8 +351,8 @@ if __name__ == '__main__' :
     op1_limit = 16
     op2_limit = 15
     for op_limit in (16, 32, 64, 128) :
-        for s_method in (3,) :
-            dfg = make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout)
-            dfg = scheduling(dfg, op_limit, s_method)
-            print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
-            print_schedule(dfg, sys.stdout)
+        s_method = 2
+        dfg = make_graph(op_list, op1_limit, op2_limit, imem_layout, omem_layout)
+        dfg = scheduling(dfg, op_limit, s_method)
+        print('{}, {}, {}: {} steps'.format(dfg.op1_num, dfg.op2_num, dfg.reg_num, dfg.total_step))
+        #print_schedule(dfg, sys.stdout)
